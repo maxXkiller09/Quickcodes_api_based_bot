@@ -31,6 +31,7 @@ from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from config import ADMIN_IDS, BOT_TITLE, SUPPORT_LINK
 from db import get_settings, txns, users, utcnow
 import payments
+from fampay import fp_ready
 from payments import MIN_AUTO_UPI, MAX_AUTO_UPI, VERIFY_ATTEMPTS, VERIFY_GAP
 from notify import get_bot
 from utils import B, KB, esc, fmt_curr, edit, normalize_support, SEP
@@ -78,15 +79,18 @@ def parse_amount(text):
 
 async def menu_view():
     s = await get_settings()
+    fp = await fp_ready()
     auto = s["auto_upi_active"] and s["AUTO_UPI_ID"] and s["UTR_API_MAIL"] and s["UTR_API_PASS"]
     manual = s["manual_upi_active"] and (s["MANUAL_UPI_ID"] or s["MANUAL_QR_FILE_ID"])
     rows = []
+    if fp:
+        rows.append([B("UPI (FamPay Auto)", "fp:start")])
     if auto:
         rows.append([B("UPI (Auto)", "rc:auto")])
     if manual:
         rows.append([B("UPI (Manual)", "rc:manual")])
     rows.append([B("Back", "back_main")])
-    if not (auto or manual):
+    if not (auto or manual or fp):
         return "⚠️ <b>Recharge is currently unavailable.</b>\n<i>Please try again later.</i>", KB(*rows)
     return f"💳 <b>Recharge Wallet</b>\n{SEP}\n<i>Select a payment method:</i>", KB(*rows)
 
