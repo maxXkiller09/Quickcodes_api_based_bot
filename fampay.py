@@ -1,7 +1,8 @@
-"""FamPay gateway: configured from the bot (/fampay), wallet is credited automatically once FamPay confirms payment."""
+"""FamPay gateway: order created via FamPay API, payment verified with the bot's existing UTR checker, wallet credited once."""
 import asyncio
 import base64
 import json
+import re
 import ssl
 import uuid
 import aiohttp
@@ -11,10 +12,10 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, CallbackQuery, BufferedInputFile
-from config import ADMIN_IDS
-from db import users, txns, utcnow
+from config import ADMIN_IDS, SUPPORT_LINK
+from db import users, txns, utcnow, get_settings
 import payments
-from utils import B, KB, esc, fmt_curr, SEP
+from utils import B, KB, esc, fmt_curr, normalize_support, SEP
 
 router = Router()
 cfg_col = users.database["fampay_cfg"]
@@ -23,22 +24,18 @@ orders = users.database["fampay_orders"]
 MIN_FP = 5
 MAX_FP = 100000
 
-ORDER_KEYS = ("order_id", "orderId", "txn_id", "txnId", "transaction_id", "id")
-LINK_KEYS = ("payment_url", "paymentUrl", "checkout_url", "checkoutUrl", "payment_link", "paymentLink",
-             "link", "url", "upi_link", "upi_url", "intent_url")
-QR_KEYS = ("qr", "qr_url", "qrUrl", "qr_image", "qrImage", "qr_code", "qrCode")
-STATUS_KEYS = ("status", "payment_status", "paymentStatus", "state")
-PAID = {"success", "paid", "completed", "complete", "captured", "credited", "successful", "settled"}
-FAILED = {"failed", "expired", "cancelled", "canceled", "rejected"}
+ORDER_KEYS = ("order_id", "orderId", "txn_id", "txnId", "id")
+LINK_KEYS = ("payment_url", "paymentUrl", "checkout_url", "checkoutUrl", "payment_link", "paymentLink", "link", "url")
+QR_KEYS = ("qr_data", "qr_image_url", "qr", "qr_url", "qrUrl", "qr_image", "qr_code", "qrCode")
 
 
 class FP(StatesGroup):
     amount = State()
+    utr = State()
 
 
 class FA(StatesGroup):
     create_url = State()
-    status_url = State()
     api_key = State()
     header = State()
 
@@ -47,17 +44,21 @@ class FA(StatesGroup):
 async def get_cfg():
     d = await cfg_col.find_one({"_id": "cfg"}) or {}
     return {"active": bool(d.get("active")), "create_url": d.get("create_url", ""),
-            "status_url": d.get("status_url", ""), "api_key": d.get("api_key", ""),
-            "header": d.get("header") or "x-api-key"}
+            "api_key": d.get("api_key", ""), "header": d.get("header") or "x-api-key"}
 
 
 async def set_cfg(**kw):
     await cfg_col.update_one({"_id": "cfg"}, {"$set": kw}, upsert=True)
 
 
+async def utr_checker_ready():
+    s = await get_settings()
+    return bool(s.get("UTR_API_MAIL") and s.get("UTR_API_PASS"))
+
+
 async def fp_ready():
     c = await get_cfg()
-    return bool(c["active"] and c["create_url"] and c["status_url"] and c["api_key"])
+    return bool(c["active"] and c["create_url"] and c["api_key"] and await utr_checker_ready())
 
 
 # ------------------------------- http helpers -------------------------------
@@ -85,6 +86,16 @@ async def _req(method, url, c, **kw):
         return 0, None
 
 
+def _short(x):
+    if isinstance(x, dict):
+        return {k: _short(v) for k, v in x.items()}
+    if isinstance(x, list):
+        return [_short(v) for v in x]
+    if isinstance(x, str) and len(x) > 90:
+        return x[:60] + "…(" + str(len(x)) + " chars)"
+    return x
+
+
 def find(d, keys):
     """first scalar value for any of `keys`, searching nested dicts/lists"""
     if isinstance(d, dict):
@@ -104,43 +115,28 @@ def find(d, keys):
     return None
 
 
-async def check_status(c, o):
-    """-> 'paid' | 'failed' | 'pending' | 'error'"""
-    url, pid = c["status_url"], str(o["provider_id"])
-    if "{order_id}" in url:
-        st, d = await _req("GET", url.replace("{order_id}", pid), c)
-    else:
-        st, d = await _req("GET", url, c, params={"order_id": pid})
-        if st in (404, 405):
-            st, d = await _req("POST", url, c, json={"order_id": pid})
-    if not st or d is None:
-        return "error"
-    s = str(find(d, STATUS_KEYS) or "").lower()
-    if s in PAID:
-        return "paid"
-    if s in FAILED:
-        return "failed"
-    return "pending"
-
-
-async def credit(o):
-    """-> ('ok', new_balance) | ('done', None) | ('error', None)"""
+# ------------------------------- crediting -------------------------------
+async def credit(o, utr, res):
+    """Payment found by the UTR checker -> credit once. -> ('ok', balance) | ('claimed', None) | ('error', None)"""
     got = await orders.find_one_and_update({"_id": o["_id"], "status": "pending"}, {"$set": {"status": "paid"}})
     if not got:
-        return "done", None
-    cid = f"FPAY-{o['provider_id']}"
-    if not await payments.claim_ids([cid], {"user_id": o["user_id"], "source": "fampay"}):
-        return "done", None
+        return "claimed", None
+    found_utr = payments.clean_id(res.get("utr"))
+    found_txn = payments.clean_id(res.get("transaction_id"))
+    ids = [i for i in dict.fromkeys([utr, found_utr, found_txn]) if i]
+    if await payments.id_in_use([found_utr, found_txn]) or not await payments.claim_ids(ids, {"user_id": o["user_id"], "source": "fampay"}):
+        await orders.update_one({"_id": o["_id"]}, {"$set": {"status": "pending"}})
+        return "claimed", None
     amt = float(o["amount"])
     try:
         await txns.insert_one({"user_id": o["user_id"], "username": o.get("username"), "full_name": o.get("full_name"),
-                               "amount": amt, "method": "fampay", "utr": None, "transaction_id": cid,
+                               "amount": amt, "method": "fampay", "utr": found_utr or utr, "transaction_id": found_txn,
                                "status": "approved", "created_at": utcnow()})
         await users.update_one({"_id": o["user_id"]}, {"$inc": {"balance": amt}})
     except Exception as e:
         print(f"[fampay] credit error: {e!r}")
         await orders.update_one({"_id": o["_id"]}, {"$set": {"status": "pending"}})
-        await payments.used_utrs.delete_many({"_id": cid})
+        await payments.used_utrs.delete_many({"_id": {"$in": ids}})
         return "error", None
     u = await users.find_one({"_id": o["user_id"]}) or {}
     return "ok", float(u.get("balance", amt))
@@ -166,7 +162,7 @@ def _photo(qr, link):
                 return BufferedInputFile(base64.b64decode(q.split(",", 1)[1]), "pay.png")
             if q.startswith("http"):
                 return q
-        if link:
+        if link and str(link).startswith("upi://"):
             return _qr_file(str(link))
     except Exception as e:
         print(f"[fampay] qr error: {e!r}")
@@ -205,32 +201,38 @@ async def fp_amount(msg: Message, state: FSMContext):
     amt = _amount(msg.text)
     if amt is None or amt < MIN_FP or amt > MAX_FP:
         return await msg.answer(f"❌ Enter a valid amount between ₹{MIN_FP} and ₹{MAX_FP:,}.")
-    c = await get_cfg()
     if not await fp_ready():
         await state.clear()
         return await msg.answer("⚠️ FamPay is currently unavailable.")
+    c = await get_cfg()
     wait = await msg.answer("⏳ <i>Creating your payment…</i>", parse_mode="HTML")
     oid = uuid.uuid4().hex[:16]
-    st, d = await _req("POST", c["create_url"], c, json={"amount": amt, "order_id": oid})
+    st, d = await _req("POST", c["create_url"], c,
+                       json={"amount": amt, "purpose": f"TG{msg.from_user.id}-{oid}", "expiry_minutes": 30})
     link = find(d, LINK_KEYS) if d is not None else None
     qr = find(d, QR_KEYS) if d is not None else None
     if not (200 <= st < 300) or not (link or qr):
-        print(f"[fampay] create failed: http={st} body={str(d)[:300]}")
+        print(f"[fampay] create failed: http={st} body={str(_short(d))[:300]}")
         await state.clear()
         return await wait.edit_text("❌ <b>Could not create the payment.</b>\nPlease try again later.", parse_mode="HTML",
                                     reply_markup=KB([B("Back", "recharge")]))
     pid = str(find(d, ORDER_KEYS) or oid)
+    try:
+        pay = float(find(d, ("payable_amount", "payableAmount")) or amt)
+    except Exception:
+        pay = amt
     await orders.insert_one({"_id": oid, "user_id": msg.from_user.id, "username": msg.from_user.username,
-                             "full_name": msg.from_user.full_name, "amount": amt, "provider_id": pid,
-                             "status": "pending", "created_at": utcnow()})
+                             "full_name": msg.from_user.full_name, "amount": amt, "payable": pay,
+                             "provider_id": pid, "status": "pending", "created_at": utcnow()})
     await state.clear()
-    cap = (f"💳 <b>Pay ₹{amt:g}</b>\n{SEP}\n"
-           f"<i>Pay with the QR / link below, then tap <b>Check Payment</b>. Your wallet is credited automatically.</i>\n"
-           f"⚠️ Pay <b>exactly ₹{amt:g}</b>.")
+    note = f" (you will receive ₹{amt:g} in your wallet)" if abs(pay - amt) > 0.001 else ""
+    cap = (f"💳 <b>Pay ₹{pay:g}</b>\n{SEP}\n"
+           f"<i>Pay with the QR or the <b>Pay Now</b> button (valid for 30 min), then tap <b>I've Paid</b> and send your UTR.</i>\n"
+           f"⚠️ Pay <b>exactly ₹{pay:g}</b>{note}.")
     rows = []
     if link and str(link).startswith("http"):
         rows.append([B("🔗 Pay Now", url=str(link))])
-    rows += [[B("✅ Check Payment", f"fp:chk:{oid}")], [B("Cancel", "recharge")]]
+    rows += [[B("✅ I've Paid", f"fp:paid:{oid}")], [B("Cancel", "recharge")]]
     kb = KB(*rows)
     try:
         await wait.delete()
@@ -238,72 +240,96 @@ async def fp_amount(msg: Message, state: FSMContext):
         pass
     photo = _photo(qr, link)
     try:
-        if photo:
-            await msg.answer_photo(photo, caption=cap, parse_mode="HTML", reply_markup=kb)
-        else:
+        if not photo:
             raise ValueError("no photo")
+        await msg.answer_photo(photo, caption=cap, parse_mode="HTML", reply_markup=kb)
     except Exception:
-        extra = f"\n<code>{esc(str(link))}</code>" if link else ""
+        extra = f"\n<code>{esc(str(link))}</code>" if link and not str(link).startswith("http") else ""
         await msg.answer(cap + extra, parse_mode="HTML", reply_markup=kb)
 
 
-@router.callback_query(F.data.startswith("fp:chk:"))
-async def fp_check(cq: CallbackQuery):
+@router.callback_query(F.data.startswith("fp:paid:"))
+async def fp_paid(cq: CallbackQuery, state: FSMContext):
     oid = cq.data.split(":", 2)[2]
     o = await orders.find_one({"_id": oid, "user_id": cq.from_user.id})
     if not o:
-        return await cq.answer("Order not found.", show_alert=True)
+        return await cq.answer("Order not found. Start the recharge again.", show_alert=True)
     if o["status"] == "paid":
         return await cq.answer("✅ This payment was already credited.", show_alert=True)
-    if o["status"] == "failed":
-        return await cq.answer("❌ This payment failed or expired. Start a new recharge.", show_alert=True)
-    c = await get_cfg()
-    s = "pending"
-    for i in range(2):
-        s = await check_status(c, o)
-        if s != "pending":
+    await cq.answer()
+    await state.set_state(FP.utr)
+    await state.update_data(oid=oid)
+    await _replace(cq, "🧾 <b>Send your 12-digit UTR</b> (or the FMP… transaction ID) of the payment you just made.",
+                   KB([B("Cancel", "recharge")]))
+
+
+def _not_found_kb(oid):
+    rows = [[B("🔄 Try Again", f"fp:paid:{oid}")]]
+    sup = normalize_support(SUPPORT_LINK)
+    if sup:
+        rows.append([B("Contact Support", url=sup)])
+    rows.append([B("Back", "recharge")])
+    return KB(*rows)
+
+
+@router.message(StateFilter(FP.utr), F.text, ~F.text.startswith("/"))
+async def fp_utr(msg: Message, state: FSMContext):
+    data = await state.get_data()
+    oid = data.get("oid")
+    o = await orders.find_one({"_id": oid, "user_id": msg.from_user.id}) if oid else None
+    if not o or o["status"] != "pending":
+        await state.clear()
+        return await msg.answer("⌛ Session expired. Start the recharge again.")
+    utr = payments.clean_id(msg.text)
+    if not (re.fullmatch(r"\d{12}", utr) or re.fullmatch(r"FMP[A-Z0-9]{6,40}", utr)):
+        return await msg.answer("❌ Invalid. Send the 12-digit UTR (digits only) or the FMP… transaction ID.")
+    if await payments.id_in_use([utr]):
+        return await msg.answer("❌ <b>This UTR was already used.</b>", parse_mode="HTML",
+                                reply_markup=KB([B("Back", "recharge")]))
+    wait = await msg.answer("🔎 <i>Verifying your payment… this can take up to a minute.</i>", parse_mode="HTML")
+    status, res = "notfound", None
+    for i in range(payments.VERIFY_ATTEMPTS):
+        status, res = await payments.utr_lookup(utr, o.get("payable") or o["amount"])
+        if status == "found":
             break
-        if i == 0:
-            await asyncio.sleep(2)
-    if s == "paid":
-        r, bal = await credit(o)
+        if i < payments.VERIFY_ATTEMPTS - 1:
+            await asyncio.sleep(payments.VERIFY_GAP)
+    if status == "found":
+        r, bal = await credit(o, utr, res)
         if r == "ok":
-            await cq.answer()
-            return await _replace(cq, f"✅ <b>Payment received!</b>\n{SEP}\n<b>Added:</b> {fmt_curr(o['amount'])}\n"
-                                      f"<b>New balance:</b> {fmt_curr(bal)}", KB([B("🏠 Home", "back_main")]))
-        if r == "done":
-            return await cq.answer("✅ This payment was already credited.", show_alert=True)
-        return await cq.answer("⚠️ Something went wrong while crediting. Contact support.", show_alert=True)
-    if s == "failed":
-        await orders.update_one({"_id": oid, "status": "pending"}, {"$set": {"status": "failed"}})
-        return await cq.answer("❌ Payment failed or expired. Start a new recharge.", show_alert=True)
-    if s == "error":
-        return await cq.answer("⚠️ Could not reach the gateway. Try again in a moment.", show_alert=True)
-    await cq.answer("⏳ Payment not received yet. Pay, wait a few seconds, then tap Check Payment again.", show_alert=True)
+            await state.clear()
+            return await wait.edit_text(
+                f"✅ <b>Payment received!</b>\n{SEP}\n<b>Added:</b> {fmt_curr(o['amount'])}\n<b>New balance:</b> {fmt_curr(bal)}",
+                parse_mode="HTML", reply_markup=KB([B("🏠 Home", "back_main")]))
+        if r == "claimed":
+            return await wait.edit_text("❌ <b>This payment was already credited.</b>", parse_mode="HTML",
+                                        reply_markup=KB([B("Back", "recharge")]))
+        return await wait.edit_text("⚠️ <b>Something went wrong while crediting.</b> Please contact support.",
+                                    parse_mode="HTML", reply_markup=_not_found_kb(oid))
+    await wait.edit_text("❌ <b>Payment not found yet.</b>\n<i>Bank updates can take a minute. Check the UTR and amount, then try again.</i>",
+                         parse_mode="HTML", reply_markup=_not_found_kb(oid))
 
 
 # ------------------------------- ADMIN PANEL (/fampay) -------------------------------
 PROMPTS = {
-    "create_url": "🔗 Send the full FamPay <b>create-order URL</b>\n<i>e.g. https://your-domain/api/v1/fampay/create</i>",
-    "status_url": "🔗 Send the <b>payment status URL</b> from the FamPay API docs.\n"
-                  "<i>Put {order_id} where the order id goes, e.g. https://your-domain/api/v1/fampay/status?order_id={order_id}</i>",
+    "create_url": "🔗 Send the full FamPay <b>create-order URL</b>\n<i>e.g. https://fampay-flame.vercel.app/api/v1/fampay/create</i>",
     "api_key": "🔑 Send your FamPay <b>live API key</b>.\n<i>Your message will be deleted automatically.</i>",
-    "header": "🏷 Send the <b>header name</b> used for the API key.\n<i>Default: x-api-key (use Authorization for Bearer keys)</i>",
+    "header": "🏷 Send the <b>header name</b> used for the API key.\n<i>Default: x-api-key</i>",
 }
 
 
 async def panel_view():
     c = await get_cfg()
+    utr_ok = await utr_checker_ready()
     text = (f"🟣 <b>FamPay Gateway</b>\n{SEP}\n"
             f"<b>Status:</b> {'🟢 ON' if c['active'] else '🔴 OFF'}\n"
             f"• Create URL: <code>{esc(c['create_url'] or '-')}</code>\n"
-            f"• Status URL: <code>{esc(c['status_url'] or '-')}</code>\n"
             f"• API key: {'✅ set' if c['api_key'] else '❌ not set'}\n"
-            f"• Auth header: <code>{esc(c['header'])}</code>")
+            f"• Auth header: <code>{esc(c['header'])}</code>\n"
+            f"• UTR checker: {'✅ ready' if utr_ok else '❌ set UTR Mail + UTR App Pass in /admin → Payments'}")
     kb = KB([B(f"FamPay: {'ON' if c['active'] else 'OFF'}", "fpa:toggle")],
-            [B("Create URL", "fpa:create_url"), B("Status URL", "fpa:status_url")],
-            [B("API Key", "fpa:api_key"), B("Auth Header", "fpa:header")],
-            [B("🧪 Test (₹1 order)", "fpa:test")],
+            [B("Create URL", "fpa:create_url"), B("API Key", "fpa:api_key")],
+            [B("Auth Header", "fpa:header"), B("🧪 Test (₹1 order)", "fpa:test")],
             [B("Close", "fpa:close")])
     return text, kb
 
@@ -332,8 +358,11 @@ async def admin_cb(cq: CallbackQuery, state: FSMContext):
         return
     if act == "toggle":
         c = await get_cfg()
-        if not c["active"] and not (c["create_url"] and c["status_url"] and c["api_key"]):
-            return await cq.answer("Set Create URL, Status URL and API key first.", show_alert=True)
+        if not c["active"]:
+            if not (c["create_url"] and c["api_key"]):
+                return await cq.answer("Set Create URL and API key first.", show_alert=True)
+            if not await utr_checker_ready():
+                return await cq.answer("Set UTR Mail and UTR App Pass in /admin → Payments first.", show_alert=True)
         await set_cfg(active=not c["active"])
         await cq.answer("Updated")
         text, kb = await panel_view()
@@ -347,8 +376,8 @@ async def admin_cb(cq: CallbackQuery, state: FSMContext):
         if not (c["create_url"] and c["api_key"]):
             return await cq.answer("Set Create URL and API key first.", show_alert=True)
         await cq.answer("Testing…")
-        st, d = await _req("POST", c["create_url"], c, json={"amount": 1, "order_id": "test" + uuid.uuid4().hex[:8]})
-        raw = json.dumps(d, ensure_ascii=False)[:1500] if d is not None else "no response"
+        st, d = await _req("POST", c["create_url"], c, json={"amount": 1, "purpose": "bot-test", "expiry_minutes": 5})
+        raw = json.dumps(_short(d), ensure_ascii=False)[:1500] if d is not None else "no response"
         link, qr, pid = find(d, LINK_KEYS), find(d, QR_KEYS), find(d, ORDER_KEYS)
         return await cq.message.answer(
             f"🧪 <b>Test result</b> (HTTP {st})\n<pre>{esc(raw)}</pre>\n"
@@ -361,13 +390,13 @@ async def admin_cb(cq: CallbackQuery, state: FSMContext):
     await cq.answer()
 
 
-@router.message(StateFilter(FA.create_url, FA.status_url, FA.api_key, FA.header), F.text, ~F.text.startswith("/"))
+@router.message(StateFilter(FA.create_url, FA.api_key, FA.header), F.text, ~F.text.startswith("/"))
 async def admin_input(msg: Message, state: FSMContext):
     if msg.from_user.id not in ADMIN_IDS:
         return
     field = (await state.get_state()).split(":")[1]
     val = msg.text.strip()
-    if field in ("create_url", "status_url") and not val.startswith("http"):
+    if field == "create_url" and not val.startswith("http"):
         return await msg.answer("❌ URL must start with https://")
     await set_cfg(**{field: val})
     if field == "api_key":
