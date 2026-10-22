@@ -44,7 +44,7 @@ async def home_view(uid, full_name):
     kb = KB(
         [B("Buy telegram Account", "buy")],
         [B("Buy WhatsApp Account", "wp_terms")],
-        [B("All apps otp (VTH panel)", "s3_user_root")],
+        [B("All apps otp", "s3_user_root")],
         [B("Social media services", "feature_smm_external")],
         [B("Recharge", "recharge"), B("My Profile", "stats")],
     )
