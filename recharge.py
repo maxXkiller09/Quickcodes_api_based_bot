@@ -84,15 +84,20 @@ async def menu_view():
     manual = s["manual_upi_active"] and (s["MANUAL_UPI_ID"] or s["MANUAL_QR_FILE_ID"])
     rows = []
     if fp:
-        rows.append([B("UPI (FamPay Auto)", "fp:start")])
+        rows.append([B("⚡ UPI · Fast Pay", "fp:start")])
     if auto:
-        rows.append([B("UPI (Auto)", "rc:auto")])
+        rows.append([B("✅ UPI · Auto Verification", "rc:auto")])
     if manual:
-        rows.append([B("UPI (Manual)", "rc:manual")])
-    rows.append([B("Back", "back_main")])
+        rows.append([B("🧾 UPI · Manual Verification", "rc:manual")])
+    rows.append([B("🏠 Back to Nexora Home", "back_main")])
     if not (auto or manual or fp):
         return "⚠️ <b>Recharge is currently unavailable.</b>\n<i>Please try again later.</i>", KB(*rows)
-    return f"💳 <b>Recharge Wallet</b>\n{SEP}\n<i>Select a payment method:</i>", KB(*rows)
+    return (f"💳 <b>ADD MONEY TO WALLET</b>\n{SEP}\n"
+            "<i>Choose how you want to pay.</i>\n\n"
+            "⚡ <b>Fast Pay</b> — if available, follow the on-screen payment steps.\n"
+            "✅ <b>Auto Verification</b> — payment is checked automatically.\n"
+            "🧾 <b>Manual Verification</b> — an admin checks your payment proof.\n\n"
+            "<i>Only pay the amount shown by the bot.</i>", KB(*rows))
 
 
 @router.callback_query(F.data == "recharge")
@@ -109,7 +114,7 @@ async def auto_start(cq: CallbackQuery, state: FSMContext):
     await cq.answer()
     await state.set_state(RC.auto_amount)
     await _replace(cq, f"💰 <b>Enter the amount to add</b>\n<i>Minimum ₹{MIN_AUTO_UPI} · Maximum ₹{MAX_AUTO_UPI:,}</i>",
-                   KB([B("Back", "recharge")]))
+                   KB([B("⬅️ Back to Payment Methods", "recharge")]))
 
 
 @router.message(StateFilter(RC.auto_amount), F.text, ~F.text.startswith("/"))
@@ -135,7 +140,7 @@ async def ask_utr(cq: CallbackQuery, state: FSMContext):
     await cq.answer()
     await state.set_state(RC.auto_utr)
     await _replace(cq, "🧾 <b>Send your 12-digit UTR</b> (or the FMP… transaction ID) of the payment you just made.",
-                   KB([B("Cancel", "recharge")]))
+                   KB([B("✖️ Cancel Recharge", "recharge")]))
 
 
 def _not_found_kb():
@@ -159,7 +164,7 @@ async def got_utr(msg: Message, state: FSMContext):
         return await msg.answer("❌ Invalid. Send the 12-digit UTR (digits only) or the FMP… transaction ID.")
     if await payments.id_in_use([utr]):
         return await msg.answer("❌ <b>This UTR was already used.</b>", parse_mode="HTML",
-                                reply_markup=KB([B("Back", "recharge")]))
+                                reply_markup=KB([B("⬅️ Payment Methods", "recharge")]))
     wait = await msg.answer("🔎 <i>Verifying your payment… this can take up to a minute.</i>", parse_mode="HTML")
     status, res = "notfound", None
     for i in range(VERIFY_ATTEMPTS):
@@ -173,7 +178,7 @@ async def got_utr(msg: Message, state: FSMContext):
         if r == "ok":
             await state.clear()
             return await edit(wait, f"✅ <b>Payment received!</b>\n{SEP}\n<b>Added:</b> {fmt_curr(amt)}\n<b>New balance:</b> {fmt_curr(bal)}",
-                              KB([B("🏠 Home", "back_main")]))
+                              KB([B("🏠 Nexora Home", "back_main")]))
         if r == "claimed":
             return await edit(wait, "❌ <b>This payment was already credited.</b>", KB([B("Back", "recharge")]))
         return await edit(wait, "⚠️ <b>Something went wrong while crediting.</b> Please contact support.", _not_found_kb())
