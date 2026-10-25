@@ -33,6 +33,16 @@ A Telegram storefront for digital services powered by the Quick Codes API. The b
 
 Admin commands include `/admin`, `/health`, `/credit user_id amount`, and `/debit user_id amount`.
 
+## Fast deployment checklist
+
+1. Push the latest `main` branch to GitHub and create a Render **Background Worker** for this repository.
+2. Set the build command to `pip install -r requirements.txt` and the start command to `python bot.py` (the repository `Procfile` also declares `worker: python bot.py`).
+3. Add these required environment variables in Render: `BOT_TOKEN`, `ADMIN_IDS`, `DATABASE_URL`, and `QC_API_BASE`.
+4. Optional: set `DB_NAME`, `BOT_TITLE`, and `SUPPORT_LINK`. Configure provider keys from the bot's owner panel after startup.
+5. Deploy, then inspect logs for the line `is running`. In Telegram, send `/start` and (as an owner) `/health`.
+
+**Important:** Telegram polling needs a continuously running worker. If your Render account does not offer a free Background Worker, a free Web Service is not a drop-in replacement for this polling setup. Do not put secrets in GitHub or send them in chat.
+
 ## Deployment
 
 The bot uses Telegram polling, so deploy it on Render as a **Background Worker**, not a web service. Set required environment variables in Render's Environment section; never commit `.env` or paste credentials into chats. Review startup logs after deploying.
