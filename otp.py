@@ -131,18 +131,13 @@ async def help_cb(cq: CallbackQuery):
     await cq.answer()
     await edit(cq,
         "ℹ️ <b>HOW OTP SERVICES WORK</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-        "<b>What Services Are Provided?</b>\nFresh, private, disposable mobile numbers across <b>200+ countries</b> "
-        "to receive SMS verification codes &amp; OTPs.\n\n"
-        "<b>Key Capabilities &amp; Highlights:</b>\n"
-        "• 📱 <b>Telegram:</b> change your account number or register fresh accounts with clean foreign numbers.\n"
-        "• 💬 <b>WhatsApp &amp; WA Business:</b> instant verification codes.\n"
-        "• 💡 <b>AI &amp; Cloud:</b> OpenAI, ChatGPT, Claude, Google Cloud, AWS, Microsoft.\n"
-        "• 🌐 <b>Social Networks:</b> Instagram, Threads, TikTok, Twitter / X, Discord, Facebook, Snapchat, Reddit.\n"
-        "• 💰 <b>Shopping &amp; Finance:</b> Amazon, Netflix, Steam, Tinder, Uber, Binance, PayPal.\n\n"
-        "🛡️ <b>100% Zero-Risk Money-Back Guarantee:</b>\n"
-        "<blockquote>• Numbers are allocated for <b>5 minutes</b>.\n"
-        "• If no SMS arrives within 5 minutes, the order is automatically cancelled and your wallet is <b>100% refunded</b>.\n"
-        "• You can also cancel manually after <b>3 minutes</b> if needed.</blockquote>",
+        "<b>Follow these steps:</b>\n"
+        "1. Choose an app or service.\n"
+        "2. Select a country and check the displayed price.\n"
+        "3. Confirm the order to receive a number.\n"
+        "4. Wait for the OTP in this chat and follow the status shown by the bot.\n\n"
+        "📌 <b>Important:</b> Availability, expiry, cancellation and refund rules can vary by service. "
+        "Check the order screen before confirming.\n",
         KB([B("⬅️ Back to OTP Services", "s3_user_root")]))
 
 
