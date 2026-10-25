@@ -25,7 +25,7 @@ import certifi
 import aiohttp
 from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
-from db import users, txns, used_utrs, get_settings, utcnow
+from db import users, txns, used_utrs, get_settings, utcnow, credit_once
 
 MIN_AUTO_UPI = 5
 MAX_AUTO_UPI = 100000
@@ -102,20 +102,47 @@ async def auto_upi_credit(uid, username, full_name, amount, utr, res):
 
 
 async def approve_txn(oid_str, admin_id):
-    """-> (status, txn)  status: ok | invalid | done | dup_utr"""
+    """Credit an admin-approved payment idempotently.
+
+    A failed/ambiguous wallet write leaves the transaction in credit_pending so
+    an admin can retry the same approval without a duplicate wallet credit.
+    -> (status, txn): ok | invalid | done | dup_utr | credit_failed
+    """
     try:
         oid = ObjectId(oid_str)
     except Exception:
         return "invalid", None
-    txn = await txns.find_one_and_update({"_id": oid, "status": "pending"},
-                                         {"$set": {"status": "approved", "approved_by": admin_id}})
+
+    txn = await txns.find_one_and_update(
+        {"_id": oid, "status": "pending"},
+        {"$set": {"status": "credit_pending", "approved_by": admin_id}},
+    )
     if not txn:
-        return "done", None
+        # Resume an interrupted credit; credit_once uses the same stable key.
+        txn = await txns.find_one({"_id": oid, "status": "credit_pending"})
+        if not txn:
+            return "done", None
+
     utr = clean_id(txn.get("utr"))
-    if utr and not await claim_ids([utr], {"user_id": txn["user_id"], "source": "admin_approved", "txn": str(oid)}):
-        await txns.update_one({"_id": oid}, {"$set": {"status": "declined", "decline_reason": "duplicate_utr"}})
-        return "dup_utr", txn
-    await users.update_one({"_id": txn["user_id"]}, {"$inc": {"balance": txn["amount"]}})
+    if utr:
+        own_claim = await used_utrs.find_one({"_id": utr, "txn": str(oid)})
+        if not own_claim and not await claim_ids(
+            [utr], {"user_id": txn["user_id"], "source": "admin_approved", "txn": str(oid)}
+        ):
+            await txns.update_one(
+                {"_id": oid, "status": "credit_pending"},
+                {"$set": {"status": "declined", "decline_reason": "duplicate_utr"}},
+            )
+            return "dup_utr", txn
+
+    credit_status = await credit_once(txn["user_id"], txn["amount"], f"manual-payment:{oid}")
+    if credit_status not in ("applied", "already_applied"):
+        return "credit_failed", txn
+
+    await txns.update_one(
+        {"_id": oid, "status": "credit_pending"},
+        {"$set": {"status": "approved", "credited_at": utcnow()}},
+    )
     return "ok", txn
 
 
