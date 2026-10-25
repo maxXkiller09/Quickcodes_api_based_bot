@@ -33,7 +33,7 @@ from config import BOT_TOKEN, QC_API_BASE, ADMIN_IDS
 from db import users, init_indexes, get_settings, utcnow
 import qc
 import notify
-import admin, recharge, fampay, tg, otp, smm, home
+import admin, recharge, fampay, tg, otp, smm, home, sandbox
 
 logging.basicConfig(level=logging.INFO)
 
@@ -79,7 +79,7 @@ async def main():
     dp.callback_query.outer_middleware(UserMiddleware())
 
     # admin first so its text prompts always win
-    for r in (admin.router, recharge.router, fampay.router, tg.router, otp.router, smm.router, home.router):
+    for r in (admin.router, recharge.router, fampay.router, tg.router, otp.router, smm.router, home.router, sandbox.router):
         dp.include_router(r)
 
     notify.set_bot(bot)
