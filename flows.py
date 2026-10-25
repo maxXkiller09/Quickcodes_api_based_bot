@@ -470,10 +470,16 @@ async def smm_refill(o):
 #                        admin: manual credit / debit
 # =====================================================================
 async def admin_credit(uid, amount):
-    r = await users.update_one({"_id": uid}, {"$inc": {"balance": round(float(amount), 2)}})
+    amount = round(float(amount), 2)
+    if amount <= 0:
+        return False
+    r = await users.update_one({"_id": uid}, {"$inc": {"balance": amount}})
     return r.matched_count == 1 if hasattr(r, "matched_count") else r.modified_count == 1
 
 
 async def admin_debit(uid, amount):
-    r = await users.update_one({"_id": uid}, [{"$set": {"balance": {"$max": [0, {"$subtract": ["$balance", round(float(amount), 2)]}]}}}])
+    amount = round(float(amount), 2)
+    if amount <= 0:
+        return False
+    r = await users.update_one({"_id": uid}, [{"$set": {"balance": {"$max": [0, {"$subtract": ["$balance", amount]}]}}}])
     return r.matched_count == 1 if hasattr(r, "matched_count") else r.modified_count == 1
