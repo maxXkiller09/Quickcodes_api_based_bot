@@ -124,3 +124,31 @@ def test_edit_falls_back_to_answer_when_edit_fails():
     assert msg.answered[0] == "Fallback"
     assert msg.answered[1]["parse_mode"] == "HTML"
 
+def test_edit_ignores_telegram_message_not_modified():
+    import asyncio
+    from aiogram.exceptions import TelegramBadRequest
+    from aiogram.methods import DeleteMessage
+
+    class FakeMessage:
+        def __init__(self):
+            self.deleted = False
+            self.answered = False
+
+        async def edit_text(self, text, **kwargs):
+            raise TelegramBadRequest(
+                method=DeleteMessage(chat_id=1, message_id=1),
+                message="message is not modified",
+            )
+
+        async def delete(self):
+            self.deleted = True
+
+        async def answer(self, text, **kwargs):
+            self.answered = True
+
+    msg = FakeMessage()
+    result = asyncio.run(utils.edit(msg, "Same screen"))
+    assert result is msg
+    assert msg.deleted is False
+    assert msg.answered is False
+
