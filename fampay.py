@@ -214,7 +214,7 @@ async def fp_start(cq: CallbackQuery, state: FSMContext):
     await cq.answer()
     await state.set_state(FP.amount)
     await _replace(cq, f"💰 <b>Enter the amount to add</b>\n<i>Minimum ₹{MIN_FP} · Maximum ₹{MAX_FP:,}</i>",
-                   KB([B("Back", "recharge")]))
+                   KB([B("⬅️ Back to Payment Methods", "recharge")]))
 
 
 @router.message(StateFilter(FP.amount), F.text, ~F.text.startswith("/"))
@@ -331,7 +331,7 @@ async def fp_utr(msg: Message, state: FSMContext):
                            f"<b>UTR:</b> <code>{esc(utr)}</code>\n<b>Order:</b> <code>{esc(str(o['provider_id']))}</code>")
             return await wait.edit_text(
                 f"✅ <b>Payment received!</b>\n{SEP}\n<b>Added:</b> {fmt_curr(o['amount'])}\n<b>New balance:</b> {fmt_curr(bal)}",
-                parse_mode="HTML", reply_markup=KB([B("🏠 Home", "back_main")]))
+                parse_mode="HTML", reply_markup=KB([B("🏠 Nexora Home", "back_main")]))
         if r == "claimed":
             await send_log(f"🚫 <b>FamPay payment already claimed</b>\n{SEP}\n<b>User:</b> {_who(msg.from_user)}\n"
                            f"<b>UTR:</b> <code>{esc(utr)}</code>")
