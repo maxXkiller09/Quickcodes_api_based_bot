@@ -501,21 +501,35 @@ async def order_refill(cq: CallbackQuery):
 
 
 # ---- background: keep orders in sync + refund users automatically ----
+async def _sync_smm_order_limited(order, sem):
+    async with sem:
+        try:
+            fresh, got = await smm_sync_order(order)
+            if got > 0:
+                try:
+                    await get_bot().send_message(
+                        order["user_id"],
+                        f"↩️ <b>Order #{order['order_id']}</b> was {str(fresh.get('status')).title()}.\n"
+                        f"💰 <b>{fmt_curr(got)}</b> has been refunded to your wallet.",
+                        parse_mode="HTML")
+                except Exception:
+                    pass
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            print(f"[smm-loop] order {order.get('order_id')}: {e!r}")
+
+
 async def smm_loop():
     await asyncio.sleep(10)
+    sem = asyncio.Semaphore(5)
     while True:
         try:
-            pending = await smm_orders.find({"order_id": {"$ne": None}, "status": {"$nin": list(FINAL)}}).sort("date", -1).limit(200).to_list(200)
-            for o in pending:
-                fresh, got = await smm_sync_order(o)
-                if got > 0:
-                    try:
-                        await get_bot().send_message(
-                            o["user_id"], f"↩️ <b>Order #{o['order_id']}</b> was {str(fresh.get('status')).title()}.\n"
-                                          f"💰 <b>{fmt_curr(got)}</b> has been refunded to your wallet.", parse_mode="HTML")
-                    except Exception:
-                        pass
-                await asyncio.sleep(0.3)
+            pending = await smm_orders.find(
+                {"order_id": {"$ne": None}, "status": {"$nin": list(FINAL)}}
+            ).sort("date", -1).limit(200).to_list(200)
+            if pending:
+                await asyncio.gather(*(_sync_smm_order_limited(o, sem) for o in pending))
         except asyncio.CancelledError:
             raise
         except Exception as e:
