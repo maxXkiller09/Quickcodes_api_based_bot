@@ -111,12 +111,16 @@ async def get_balance(uid):
 
 async def charge(uid, amount):
     amount = round(float(amount), 2)
+    if amount <= 0:
+        return False
     r = await users.update_one({"_id": uid, "balance": {"$gte": amount}}, {"$inc": {"balance": -amount}})
     return r.modified_count == 1
 
 
 async def refund(uid, amount):
     amount = round(float(amount), 2)
+    if amount <= 0:
+        return False
     try:
         result = await users.update_one({"_id": uid}, {"$inc": {"balance": amount}})
         return getattr(result, "matched_count", 1) == 1
