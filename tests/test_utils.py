@@ -14,7 +14,7 @@ def test_currency_formatters_handle_zero_and_decimals():
 
 def test_short_keeps_short_text_and_truncates_long_text():
     assert short("Nexora", 10) == "Nexora"
-    assert short("Nexora service menu", 8) == "Nexora…"
+    assert short("Nexora service menu", 8) == "Nexora …"
 
 
 def test_keyboard_builder_skips_empty_rows():
