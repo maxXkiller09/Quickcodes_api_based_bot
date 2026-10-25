@@ -138,28 +138,83 @@ def find(d, keys):
 
 # ------------------------------- crediting -------------------------------
 async def credit(o, utr, res):
-    """Payment found by the UTR checker -> credit once. -> ('ok', balance) | ('claimed', None) | ('error', None)"""
-    got = await orders.find_one_and_update({"_id": o["_id"], "status": "pending"}, {"$set": {"status": "paid"}})
-    if not got:
-        return "claimed", None
-    found_utr = payments.clean_id(res.get("utr"))
+    """Credit a verified FamPay order once, allowing safe retries after uncertain writes."""
+    order_key = str(o["_id"])
+    amt = round(float(o["amount"]), 2)
+    found_utr = payments.clean_id(res.get("utr")) or payments.clean_id(utr)
     found_txn = payments.clean_id(res.get("transaction_id"))
-    ids = [i for i in dict.fromkeys([utr, found_utr, found_txn]) if i]
-    if await payments.id_in_use([found_utr, found_txn]) or not await payments.claim_ids(ids, {"user_id": o["user_id"], "source": "fampay"}):
-        await orders.update_one({"_id": o["_id"]}, {"$set": {"status": "pending"}})
+    ids = list(dict.fromkeys(i for i in (payments.clean_id(utr), found_utr, found_txn) if i))
+
+    current = await orders.find_one({"_id": o["_id"]}) or {}
+    if current.get("status") == "paid":
         return "claimed", None
-    amt = float(o["amount"])
+    if current.get("status") not in ("pending", "credit_pending"):
+        return "claimed", None
+
+    # Retain our own UTR claims on retry; reject claims belonging to another order.
+    new_ids = []
+    for key in ids:
+        claim = await payments.used_utrs.find_one({"_id": key})
+        if claim:
+            if str(claim.get("order_id", "")) != order_key or claim.get("source") != "fampay":
+                return "claimed", None
+        else:
+            new_ids.append(key)
+
+    approved = await txns.find_one({
+        "status": "approved",
+        "$or": [{"utr": {"$in": ids}}, {"transaction_id": {"$in": ids}}],
+    }) if ids else None
+    if approved:
+        return "claimed", None
+
+    if new_ids and not await payments.claim_ids(
+        new_ids, {"user_id": o["user_id"], "source": "fampay", "order_id": order_key}
+    ):
+        return "claimed", None
+
+    # The durable order state is written before wallet credit. A retry reuses
+    # the same credit key and cannot apply the balance increment twice.
+    await orders.update_one(
+        {"_id": o["_id"], "status": {"$in": ["pending", "credit_pending"]}},
+        {"$set": {"status": "credit_pending", "utr": found_utr or utr,
+                  "transaction_id": found_txn or None}},
+    )
+
     try:
-        await txns.insert_one({"user_id": o["user_id"], "username": o.get("username"), "full_name": o.get("full_name"),
-                               "amount": amt, "method": "fampay", "utr": found_utr or utr, "transaction_id": found_txn,
-                               "status": "approved", "created_at": utcnow()})
-        await users.update_one({"_id": o["user_id"]}, {"$inc": {"balance": amt}})
+        await txns.update_one(
+            {"payment_ref": order_key},
+            {"$setOnInsert": {
+                "payment_ref": order_key, "user_id": o["user_id"],
+                "username": o.get("username"), "full_name": o.get("full_name"),
+                "amount": amt, "method": "fampay", "utr": found_utr or utr,
+                "transaction_id": found_txn or None, "status": "credit_pending",
+                "created_at": utcnow(),
+            }},
+            upsert=True,
+        )
+        credit_status = await payments.credit_once(o["user_id"], amt, f"fampay:{order_key}")
     except Exception as e:
-        print(f"[fampay] credit error: {e!r}")
-        await orders.update_one({"_id": o["_id"]}, {"$set": {"status": "pending"}})
-        await payments.used_utrs.delete_many({"_id": {"$in": ids}})
+        print(f"[fampay] credit status uncertain: {e!r}")
         return "error", None
-    u = await users.find_one({"_id": o["user_id"]}) or {}
+
+    if credit_status not in ("applied", "already_applied"):
+        return "error", None
+
+    try:
+        await txns.update_one(
+            {"payment_ref": order_key},
+            {"$set": {"status": "approved", "credited_at": utcnow()}},
+        )
+        await orders.update_one(
+            {"_id": o["_id"], "status": "credit_pending"},
+            {"$set": {"status": "paid", "credited_at": utcnow()}},
+        )
+        u = await users.find_one({"_id": o["user_id"]}) or {}
+    except Exception as e:
+        # Keep the order pending for retry; credit_once recognizes the stable key.
+        print(f"[fampay] finalization uncertain: {e!r}")
+        return "error", None
     return "ok", float(u.get("balance", amt))
 
 
@@ -303,7 +358,7 @@ async def fp_utr(msg: Message, state: FSMContext):
     data = await state.get_data()
     oid = data.get("oid")
     o = await orders.find_one({"_id": oid, "user_id": msg.from_user.id}) if oid else None
-    if not o or o["status"] != "pending":
+    if not o or o["status"] not in ("pending", "credit_pending"):
         await state.clear()
         return await msg.answer("⌛ Session expired. Start the recharge again.")
     utr = payments.clean_id(msg.text)
