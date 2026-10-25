@@ -40,20 +40,6 @@ import admin, recharge, fampay, tg, otp, smm, home, sandbox
 logging.basicConfig(level=logging.INFO)
 
 
-async def _log_activity(kind, user, chat, detail):
-    """Send a compact activity event to the configured private log group."""
-    try:
-        safe_detail = escape(str(detail or "")[:240])
-        await fampay.send_log(
-            f"🧾 <b>BOT ACTIVITY · {escape(kind)}</b>\\n"
-            f"👤 {escape(user.full_name or 'Unknown')} "
-            f"(@{escape(user.username)} if user.username else '')"
-        )
-    except Exception:
-        # Activity logging must never interrupt normal bot actions.
-        pass
-
-
 class ActivityMiddleware(BaseMiddleware):
     """Log incoming messages and button actions, while masking likely secrets."""
     async def __call__(self, handler, event, data):
@@ -79,7 +65,7 @@ class ActivityMiddleware(BaseMiddleware):
                         detail = f"Sensitive input hidden (state={state_name or 'unknown'})"
                     elif raw:
                         # Never forward long numeric strings or obvious credential/payment payloads.
-                        if re.search(r"(?i)(password|app.?pass|api.?key|token|utr|otp|verification code)", raw) or re.search(r"\\b\\d{6,}\\b", raw):
+                        if re.search(r"(?i)(password|app.?pass|api.?key|token|utr|otp|verification code)", raw) or re.search(r"\b\d{6,}\b", raw):
                             detail = "Message content hidden (possible secret/code)"
                         else:
                             detail = raw[:180]
@@ -91,11 +77,11 @@ class ActivityMiddleware(BaseMiddleware):
                         detail = f"Update type: {type(event).__name__}"
                     kind = "MESSAGE"
                 await fampay.send_log(
-                    f"🧾 <b>BOT ACTIVITY · {kind}</b>\\n"
+                    f"🧾 <b>BOT ACTIVITY · {kind}</b>\n"
                     f"👤 {escape(user.full_name or 'Unknown')} "
                     f"{('@' + escape(user.username)) if user.username else ''} "
-                    f"(<code>{user.id}</code>)\\n"
-                    f"💬 Chat: <code>{chat_id}</code>\\n"
+                    f"(<code>{user.id}</code>)\n"
+                    f"💬 Chat: <code>{chat_id}</code>\n"
                     f"📌 {escape(detail)}"
                 )
             except Exception:
