@@ -130,7 +130,7 @@ async def user_root(cq: CallbackQuery, state: FSMContext):
 async def help_cb(cq: CallbackQuery):
     await cq.answer()
     await edit(cq,
-        "ℹ️ <b>About Server 3 / VTH panel Virtual Number Activation</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        "ℹ️ <b>HOW OTP SERVICES WORK</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
         "<b>What Services Are Provided?</b>\nFresh, private, disposable mobile numbers across <b>200+ countries</b> "
         "to receive SMS verification codes &amp; OTPs.\n\n"
         "<b>Key Capabilities &amp; Highlights:</b>\n"
@@ -143,7 +143,7 @@ async def help_cb(cq: CallbackQuery):
         "<blockquote>• Numbers are allocated for <b>5 minutes</b>.\n"
         "• If no SMS arrives within 5 minutes, the order is automatically cancelled and your wallet is <b>100% refunded</b>.\n"
         "• You can also cancel manually after <b>3 minutes</b> if needed.</blockquote>",
-        KB([B("⬅️ Back", "s3_user_root")]))
+        KB([B("⬅️ Back to OTP Services", "s3_user_root")]))
 
 
 @router.callback_query(F.data == "s3n")
