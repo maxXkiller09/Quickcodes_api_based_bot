@@ -29,16 +29,28 @@ from db import get_settings
 import notify
 
 _session = None
+_session_lock = asyncio.Lock()
 BUSY_USER = "⚠️ <b>Service temporarily unavailable.</b>\nPlease try again later. <i>You were not charged.</i>"
 
 
 async def _sess():
     global _session
     if _session is None or _session.closed:
-        _session = aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=40),
-            connector=aiohttp.TCPConnector(ssl=ssl.create_default_context(cafile=certifi.where()), limit=30, ttl_dns_cache=300))
+        async with _session_lock:
+            if _session is None or _session.closed:
+                _session = aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=40),
+                    connector=aiohttp.TCPConnector(
+                        ssl=ssl.create_default_context(cafile=certifi.where()),
+                        limit=100, limit_per_host=30, ttl_dns_cache=300))
     return _session
+
+
+async def close_session():
+    """Close the shared HTTP connection pool during graceful shutdown."""
+    global _session
+    if _session is not None and not _session.closed:
+        await _session.close()
 
 
 async def qc(server, method, path, params=None, json=None, timeout=30, key=None):
