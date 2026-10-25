@@ -85,8 +85,3 @@ async def sandbox_action(call: CallbackQuery):
 
     await call.message.edit_text(text, reply_markup=_panel())
 
-
-@router.callback_query(F.data.startswith("sandbox:"))
-async def _unused_duplicate_guard(call: CallbackQuery):
-    # Kept intentionally unreachable; the primary handler above owns sandbox callbacks.
-    return
