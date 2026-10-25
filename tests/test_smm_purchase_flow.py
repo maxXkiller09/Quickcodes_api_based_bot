@@ -28,22 +28,27 @@ def run(coro):
     return asyncio.run(coro)
 
 
+async def value(result):
+    return result
+
+
 def setup_catalog(monkeypatch, service=SERVICE):
     monkeypatch.setattr(
         flows, "smm_catalog",
-        lambda: _async_value({"services": {str(service["service"]): service}}),
+        lambda: value({"services": {str(service["service"]): service}}),
     )
-    monkeypatch.setattr(flows, "profit_pct", _async_value(0))
+    monkeypatch.setattr(flows, "profit_pct", lambda *_: value(0))
 
 
-async def _async_value(value):
-    return value
+async def record_call(calls, name, *args):
+    calls.append((name, args))
+    return True
 
 
 def test_buy_smm_rejects_stale_shown_price_before_charging(monkeypatch):
     setup_catalog(monkeypatch)
     calls = []
-    monkeypatch.setattr(flows, "charge", lambda *a: _record_call(calls, "charge", *a))
+    monkeypatch.setattr(flows, "charge", lambda *a: record_call(calls, "charge", *a))
 
     result = run(flows.buy_smm(7, "42", "https://example.com/post", 1000, None, 1.00))
 
@@ -51,17 +56,12 @@ def test_buy_smm_rejects_stale_shown_price_before_charging(monkeypatch):
     assert calls == []
 
 
-async def _record_call(calls, name, *args):
-    calls.append((name, args))
-    return True
-
-
 def test_buy_smm_reports_insufficient_balance_without_provider_call(monkeypatch):
     setup_catalog(monkeypatch)
-    monkeypatch.setattr(flows, "charge", _async_value(False))
-    monkeypatch.setattr(flows, "get_balance", _async_value(2.0))
+    monkeypatch.setattr(flows, "charge", lambda *_: value(False))
+    monkeypatch.setattr(flows, "get_balance", lambda *_: value(2.0))
     provider_calls = []
-    monkeypatch.setattr(flows, "qc", lambda *a, **k: _record_call(provider_calls, "qc", *a, **k))
+    monkeypatch.setattr(flows, "qc", lambda *a, **k: record_call(provider_calls, "qc", *a))
 
     result = run(flows.buy_smm(7, "42", "https://example.com/post", 1000, None, 10.0))
 
@@ -73,10 +73,10 @@ def test_buy_smm_refunds_when_provider_rejects_order(monkeypatch):
     setup_catalog(monkeypatch)
     charged = []
     refunded = []
-    monkeypatch.setattr(flows, "charge", lambda uid, amount: _record_call(charged, "charge", uid, amount))
-    monkeypatch.setattr(flows, "refund", lambda uid, amount: _record_call(refunded, "refund", uid, amount))
-    monkeypatch.setattr(flows, "qc", lambda *a, **k: _provider_failure())
-    monkeypatch.setattr(flows, "explain", _explain_failure)
+    monkeypatch.setattr(flows, "charge", lambda uid, amount: record_call(charged, "charge", uid, amount))
+    monkeypatch.setattr(flows, "refund", lambda uid, amount: record_call(refunded, "refund", uid, amount))
+    monkeypatch.setattr(flows, "qc", lambda *a, **k: provider_failure())
+    monkeypatch.setattr(flows, "explain", explain_failure)
 
     result = run(flows.buy_smm(7, "42", "https://example.com/post", 1000, None, 10.0))
 
@@ -85,18 +85,18 @@ def test_buy_smm_refunds_when_provider_rejects_order(monkeypatch):
     assert refunded == [("refund", (7, 10.0))]
 
 
-async def _provider_failure():
+async def provider_failure():
     return 400, {"ok": False, "error": "invalid_order"}
 
 
-async def _explain_failure(*args):
+async def explain_failure(*args):
     return "fail", "Provider rejected the order"
 
 
 def test_buy_smm_returns_unavailable_for_unknown_service_without_charging(monkeypatch):
-    monkeypatch.setattr(flows, "smm_catalog", _async_value({"services": {}}))
+    monkeypatch.setattr(flows, "smm_catalog", lambda: value({"services": {}}))
     calls = []
-    monkeypatch.setattr(flows, "charge", lambda *a, **k: _record_call(calls, "charge", *a, **k))
+    monkeypatch.setattr(flows, "charge", lambda *a, **k: record_call(calls, "charge", *a))
 
     result = run(flows.buy_smm(7, "missing", "https://example.com/post", 1000, None, 10.0))
 
