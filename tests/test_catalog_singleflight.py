@@ -53,6 +53,11 @@ def test_unrelated_catalog_keys_can_load_concurrently(monkeypatch):
 
     monkeypatch.setattr(flows, "qc", fake_qc)
     monkeypatch.setattr(flows, "explain", unexpected_explain)
+
+    async def fake_profit_pct(*args, **kwargs):
+        return 0
+
+    monkeypatch.setattr(flows, "profit_pct", fake_profit_pct)
     monkeypatch.setattr(flows, "_cty3", {})
     monkeypatch.setattr(flows, "_off3", {})
 
