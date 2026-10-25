@@ -281,9 +281,58 @@ async def buy_s3(uid, sid, cid, op, shown, chat_id, msg_id):
 
 
 async def close_task(order_id, new_status, **extra):
-    """atomic active -> new_status. Only the winner gets the doc (prevents double delivery / double refund)."""
+    """Atomic active -> new_status. Only one poller can finish/deliver an active task."""
     return await tasks.find_one_and_update({"order_id": order_id, "status": "active"},
                                            {"$set": {"status": new_status, **extra}})
+
+
+async def _finish_task_refund(t):
+    """Idempotently credit a cancelled S3 task and leave failures retryable."""
+    key = f"s3:{t['order_id']}:cancel-refund"
+    result = await refund_once(t["user_id"], t["price"], key)
+    if result not in ("applied", "already_applied"):
+        await notify.alert_admins(
+            f"🚨 <b>Server 3 refund pending</b>\nOrder <code>{t['order_id']}</code> · "
+            f"user <code>{t['user_id']}</code> · ₹{float(t['price']):g}. Automatic retry will continue."
+        )
+        return False
+    await tasks.update_one(
+        {"order_id": t["order_id"], "status": "refund_pending"},
+        {"$set": {"status": "cancelled", "refunded": True, "refunded_at": utcnow()}},
+    )
+    return True
+
+
+async def cancel_task_with_refund(t, reason):
+    """Claim an active task for cancellation, then safely refund with retryable state."""
+    won = await tasks.find_one_and_update(
+        {"order_id": t["order_id"], "status": "active"},
+        {"$set": {"status": "refund_pending", "cancel_reason": reason}},
+    )
+    if not won:
+        return False
+    await _finish_task_refund({**t, **won, "cancel_reason": reason, "status": "refund_pending"})
+    return True
+
+
+async def s3_refund_retry_loop():
+    """Retry durable pending refunds after transient wallet/database failures."""
+    await asyncio.sleep(15)
+    while True:
+        try:
+            pending = await tasks.find({"status": "refund_pending"}).sort("ts", 1).limit(100).to_list(100)
+            for task in pending:
+                try:
+                    await _finish_task_refund(task)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    print(f"[s3-refund-loop] order {task.get('order_id')}: {e!r}")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            print(f"[s3-refund-loop] scan failed: {e!r}")
+        await asyncio.sleep(20)
 
 
 async def s3_poll(t):
@@ -298,18 +347,16 @@ async def s3_poll(t):
                                "otp": d.get("otp"), "date": utcnow()})
             return {"act": "completed", "won": bool(won), "otp": d.get("otp")}
         if s == "cancelled":
-            won = await close_task(t["order_id"], "cancelled")
-            if won:
-                await refund(t["user_id"], t["price"])
+            won = await cancel_task_with_refund(t, "provider_cancelled")
             return {"act": "cancelled", "won": bool(won)}
         return {"act": "active", "left": int(d.get("expires_in") or 0)}
     lost = d.get("error") == "order_not_found"
     if lost or time.time() - t["ts"] > OTP_TIMEOUT + 300:
-        won = await close_task(t["order_id"], "cancelled", cancel_reason="lost")
+        won = await cancel_task_with_refund(t, "lost")
         if won:
-            await refund(t["user_id"], t["price"])
             await notify.alert_admins(f"⚠️ Server 3 order <code>{t['order_id']}</code> could not be tracked - "
-                                      f"user <code>{t['user_id']}</code> was refunded ₹{t['price']:g}.")
+                                      f"refund is being processed for user <code>{t['user_id']}</code> "
+                                      f"(₹{t['price']:g}).")
         return {"act": "cancelled", "won": bool(won)}
     return {"act": "error"}
 
@@ -323,9 +370,7 @@ async def s3_cancel(uid, order_id):
         return {"kind": "locked", "left": int(CANCEL_LOCK - elapsed)}
     st, d = await qc("s3", "POST", f"/v1/s3/cancel/{order_id}")
     if d.get("ok") and d.get("status") == "cancelled":
-        won = await close_task(order_id, "cancelled", cancel_reason="user")
-        if won:
-            await refund(uid, t["price"])
+        won = await cancel_task_with_refund(t, "user")
         return {"kind": "cancelled", "task": t, "won": bool(won)}
     if d.get("ok") and d.get("status") == "completed":
         r = await s3_poll(t)
