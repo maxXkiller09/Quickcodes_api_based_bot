@@ -42,7 +42,7 @@ async def home_view(uid, full_name):
         f"💳 <b>WALLET BALANCE</b>\n"
         f"<blockquote>💰 <b>{balance}</b></blockquote>\n"
         f"🛍 <b>EXPLORE SERVICES</b>\n"
-        f"<i>Telegram accounts at current provider rates — zero added markup.</i>\n"
+        f"<i>Telegram accounts at the current provider rate — no added markup.</i>\n"
         f"\n<code>FAST ACCESS  •  CLEAR PRICING  •  ORDER TRACKING</code>"
     )
     rows = [
