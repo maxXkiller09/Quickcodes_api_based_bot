@@ -18,6 +18,7 @@ def test_home_view_escapes_user_name_and_renders_core_navigation(monkeypatch):
         return {"balance": 12.5}
 
     monkeypatch.setattr(home.users, "find_one", fake_find_one)
+    monkeypatch.setattr(home, "SUPPORT_LINK", "")
     text, keyboard = asyncio.run(home.home_view(42, "<Sam & Co>"))
 
     assert "&lt;Sam &amp; Co&gt;" in text
@@ -38,6 +39,7 @@ def test_home_view_handles_missing_wallet_document(monkeypatch):
         return None
 
     monkeypatch.setattr(home.users, "find_one", fake_find_one)
+    monkeypatch.setattr(home, "SUPPORT_LINK", "")
     text, keyboard = asyncio.run(home.home_view(99, "New User"))
 
     assert "₹0.00" in text
@@ -135,3 +137,19 @@ def test_history_empty_state_offers_browse_and_profile(monkeypatch):
     }
     assert {"back_main", "stats"} <= callbacks
     assert cq.answered is True
+
+
+def test_home_view_adds_support_button_only_when_configured(monkeypatch):
+    async def fake_find_one(query):
+        return {"balance": 0}
+
+    monkeypatch.setattr(home.users, "find_one", fake_find_one)
+    monkeypatch.setattr(home, "SUPPORT_LINK", "@nexora_support")
+    _, keyboard = asyncio.run(home.home_view(42, "Sam"))
+
+    support = [
+        button for row in keyboard.inline_keyboard for button in row
+        if button.text == "🛟 Help & Support"
+    ]
+    assert len(support) == 1
+    assert support[0].url == "https://t.me/nexora_support"
