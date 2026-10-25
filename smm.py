@@ -82,14 +82,16 @@ async def need_catalog(cq):
 async def render_main(target, uid):
     cat = await smm_catalog()
     apps = [(k, n, e) for k, n, e in APPS if k in cat["apps"]]
-    text = (f"<b>🌍 SMM Panel</b>\n{SEP}\n"
-            "<blockquote>• Growth services for every platform\n• Live rates · fast start · order tracking\n"
-            "• Auto-refund to wallet if an order is cancelled</blockquote>\n"
-            f"💳 <b>Wallet:</b> {fmt_curr(await get_balance(uid))}\n\n👇 <b>Select a platform or search:</b>")
+    text = (f"📈 <b>NEXORA · SOCIAL SERVICES</b>\n{SEP}\n"
+            "<blockquote>🔎 Choose a platform, then a category and service.\n"
+            "💰 Price and order limits are shown before you confirm.\n"
+            "📦 Track placed orders from <b>My Orders</b>.</blockquote>\n"
+            f"💳 <b>Wallet balance:</b> {fmt_curr(await get_balance(uid))}\n\n"
+            "👇 <b>1. Choose a platform or search</b>")
     rows = chunk([B(f"{e} {n}", f"sm_app:{k}:0") for k, n, e in apps], 2)
-    rows.append([B("Search App", "sm_sapp"), B("Search Services", "sm_ssrv")])
-    rows.append([B("My Orders", "sm_hist:0")])
-    rows.append([B("⬅️ Back", "back_main")])
+    rows.append([B("🔎 Search Platform", "sm_sapp"), B("🔎 Search Services", "sm_ssrv")])
+    rows.append([B("📦 My Orders / Track", "sm_hist:0")])
+    rows.append([B("🏠 Nexora Home", "back_main")])
     await edit(target, text, KB(*rows))
 
 
@@ -265,7 +267,7 @@ async def service_details(cq: CallbackQuery, state: FSMContext):
             f"<b>📊 Limits:</b> {limits}\n"
             f"<b>♻️ Refill:</b> {'Yes' if srv['refill'] else 'No'}</blockquote>\n\n"
             "❓ <b>Do you want to order this service?</b>")
-    await edit(cq, text, KB([B("🛒 Order Now", f"sm_order:{sid}"), B("Back", back)]))
+    await edit(cq, text, KB([B("✅ Continue to Order", f"sm_order:{sid}")], [B("⬅️ Back to Services", back)]))
     await cq.answer()
 
 
