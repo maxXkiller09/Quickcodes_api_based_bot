@@ -33,15 +33,16 @@ A Telegram storefront for digital services powered by the Quick Codes API. The b
 
 Admin commands include `/admin`, `/health`, `/credit user_id amount`, and `/debit user_id amount`.
 
-## Fast deployment checklist
+## Fast deployment checklist — Render Free Web Service
 
-1. Push the latest `main` branch to GitHub and create a Render **Background Worker** for this repository.
-2. Set the build command to `pip install -r requirements.txt` and the start command to `python bot.py` (the repository `Procfile` also declares `worker: python bot.py`).
-3. Add these required environment variables in Render: `BOT_TOKEN`, `ADMIN_IDS`, `DATABASE_URL`, and `QC_API_BASE`.
-4. Optional: set `DB_NAME`, `BOT_TITLE`, and `SUPPORT_LINK`. Configure provider keys from the bot's owner panel after startup.
-5. Deploy, then inspect logs for the line `is running`. In Telegram, send `/start` and (as an owner) `/health`.
+1. Create a Render **Web Service** connected to this repository.
+2. Build command: `pip install -r requirements.txt`; start command: `python bot.py`.
+3. Add required environment variables: `BOT_TOKEN`, `ADMIN_IDS`, `DATABASE_URL`, and `QC_API_BASE`. Optional: `DB_NAME`, `BOT_TITLE`, and `SUPPORT_LINK`.
+4. Render automatically provides `RENDER_EXTERNAL_URL` and `PORT`. When `RENDER_EXTERNAL_URL` exists, the bot switches to a Telegram webhook and binds to the provided port.
+5. Deploy and wait for logs to show `running in Render webhook mode`. Open `https://YOUR-SERVICE.onrender.com/health` to check the HTTP health endpoint. Then test `/start`, `/health`, and `/setforcechannel` in Telegram.
+6. Configure provider keys through the bot's owner panel after startup.
 
-**Important:** Telegram polling needs a continuously running worker. If your Render account does not offer a free Background Worker, a free Web Service is not a drop-in replacement for this polling setup. Do not put secrets in GitHub or send them in chat.
+**Free-tier note:** Render may spin down an idle free Web Service. Telegram webhook deliveries can trigger a cold start, so messages may be delayed while the service wakes. This is the free-Web-Service-compatible path; always-on instant responses require an always-on hosting option. Keep all secrets out of GitHub and chat.
 
 ## Deployment
 
