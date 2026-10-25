@@ -76,11 +76,11 @@ async def build_menu(page=0, query=None):
     first = page * PER_PAGE + 1
     last = min((page + 1) * PER_PAGE, len(rows))
     text = (
-        f"<b>{head}</b>\\n{LINE}\\n"
-        f"🌍 <b>Choose a country</b>\\n"
-        f"📄 Page <b>{page + 1}/{pages}</b> · Showing <b>{first}–{last}</b> of <b>{len(rows)}</b>\\n"
-        f"{LINE}\\n"
-        f"<i>🟢 Available · 🔴 Out of stock</i>\\n"
+        f"<b>{head}</b>\n{LINE}\n"
+        f"🌍 <b>Choose a country</b>\n"
+        f"📄 Page <b>{page + 1}/{pages}</b> · Showing <b>{first}–{last}</b> of <b>{len(rows)}</b>\n"
+        f"{LINE}\n"
+        f"<i>🟢 Available · 🔴 Out of stock</i>\n"
         f"<i>Select a country to view its price and continue.</i>"
     )
     return text, KB(*kb_rows)
