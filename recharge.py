@@ -299,6 +299,14 @@ async def decide(cq: CallbackQuery):
                                               parse_mode="HTML", reply_markup=None)
             except Exception:
                 pass
+        elif st == "credit_failed":
+            await cq.answer("⚠️ Credit not confirmed. Retry approval later.", show_alert=True)
+            try:
+                await cq.message.edit_caption(caption=(cq.message.caption or "") +
+                                              "\n\n⚠️ <b>Credit pending — retry approval to safely resume</b>",
+                                              parse_mode="HTML", reply_markup=KB([B("🔄 Retry Approval", f"rc:ok:{tid}")]))
+            except Exception:
+                pass
         else:
             await cq.answer("Already handled.", show_alert=True)
         return
