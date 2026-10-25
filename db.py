@@ -49,6 +49,7 @@ DEFAULTS = {
     "UTR_API_PASS": "",
     "MANUAL_UPI_ID": "",
     "MANUAL_QR_FILE_ID": None,
+    "force_join": {"channel_1": "", "link_1": "", "channel_2": "", "link_2": ""},
 }
 
 _cache = {"t": 0.0, "v": None}

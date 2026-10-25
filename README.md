@@ -27,6 +27,7 @@ A Telegram storefront for digital services powered by the Quick Codes API. The b
 - **Pricing:** configure supported markup for Server 3 and SMM. Telegram account pricing stays at the provider rate with no added markup.
 - **Payments:** configure Auto UPI / UTR verification and/or manual UPI / QR, then enable the payment methods you intend to use.
 - **Services:** switch supported services on or off for users.
+- **Force join:** owners can configure up to two required channels in Telegram with `/setforcechannel 1 @channelusername` and `/setforcechannel 2 @channelusername`; remove with `/setforcechannel off 1` or `/setforcechannel off all`. The bot must be an administrator in each channel.
 - **API balance:** monitor and recharge the Quick Codes wallet in the Quick Codes bot.
 - **Health:** `/health` reports local database/configuration checks; it does not perform live payment verification or prove provider API availability.
 
