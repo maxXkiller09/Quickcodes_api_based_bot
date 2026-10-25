@@ -128,7 +128,6 @@ class UserMiddleware(BaseMiddleware):
 
 class ForceJoinMiddleware(BaseMiddleware):
     """Require membership in both configured channels before using the bot."""
-    def __init__(self):
     async def __call__(self, handler, event, data):
         user = getattr(event, "from_user", None)
         if (not user or user.is_bot or user.id in ADMIN_IDS
