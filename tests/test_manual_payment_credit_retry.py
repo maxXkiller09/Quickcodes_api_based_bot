@@ -42,7 +42,10 @@ class FakeClaims:
         self.claims = {}
 
     async def find_one(self, query):
-        return self.claims.get(query["_id"])
+        claim = self.claims.get(query["_id"])
+        if claim and "txn" in query and claim.get("txn") != query["txn"]:
+            return None
+        return claim
 
 
 def setup(monkeypatch, status="pending", utr=None, credit_results=("applied",)):
