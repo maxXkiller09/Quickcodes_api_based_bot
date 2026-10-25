@@ -30,6 +30,7 @@ def test_concurrent_s2_requests_share_one_provider_call(monkeypatch):
         results = await asyncio.gather(flows.s2_rows(), flows.s2_rows(), flows.s2_rows())
         assert results == [[{"country_code": "IN"}]] * 3
         assert len(calls) == 1
+        assert flows._catalog_locks == {}
 
     asyncio.run(run())
 
@@ -67,5 +68,6 @@ def test_unrelated_catalog_keys_can_load_concurrently(monkeypatch):
             flows.s3_offers("instagram", "IN"),
         )
         assert peak == 2
+        assert flows._catalog_locks == {}
 
     asyncio.run(run())
