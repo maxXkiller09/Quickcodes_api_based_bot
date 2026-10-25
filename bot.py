@@ -29,7 +29,7 @@ from html import escape
 from aiogram import Bot, Dispatcher, BaseMiddleware, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode, ChatMemberStatus
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import (BOT_TOKEN, QC_API_BASE, ADMIN_IDS, FORCE_JOIN_CHANNEL_1,
@@ -129,21 +129,25 @@ class UserMiddleware(BaseMiddleware):
 class ForceJoinMiddleware(BaseMiddleware):
     """Require membership in both configured channels before using the bot."""
     def __init__(self):
-        self.channels = [
-            (FORCE_JOIN_CHANNEL_1, FORCE_JOIN_LINK_1, "Channel 1"),
-            (FORCE_JOIN_CHANNEL_2, FORCE_JOIN_LINK_2, "Channel 2"),
-        ]
-        self.channels = [(chat, link, label) for chat, link, label in self.channels if chat and link]
-
     async def __call__(self, handler, event, data):
         user = getattr(event, "from_user", None)
-        if (not self.channels or not user or user.is_bot or user.id in ADMIN_IDS
+        if (not user or user.is_bot or user.id in ADMIN_IDS
                 or (isinstance(event, CallbackQuery) and event.data == "force_join_check")):
+            return await handler(event, data)
+
+        settings = await get_settings()
+        fj = settings.get("force_join") or {}
+        channels = [
+            (fj.get("channel_1", ""), fj.get("link_1", ""), "Channel 1"),
+            (fj.get("channel_2", ""), fj.get("link_2", ""), "Channel 2"),
+        ]
+        channels = [(chat, link, label) for chat, link, label in channels if chat and link]
+        if not channels:
             return await handler(event, data)
 
         bot = data.get("bot")
         missing = []
-        for chat_id, invite_link, label in self.channels:
+        for chat_id, invite_link, label in channels:
             try:
                 member = await bot.get_chat_member(chat_id=chat_id, user_id=user.id)
                 if member.status not in (ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR,
@@ -176,9 +180,11 @@ class ForceJoinMiddleware(BaseMiddleware):
 
 async def force_join_check(cq):
     """Re-check membership after the user taps the force-join confirmation button."""
+    settings = await get_settings()
+    fj = settings.get("force_join") or {}
     channels = [
-        (FORCE_JOIN_CHANNEL_1, FORCE_JOIN_LINK_1),
-        (FORCE_JOIN_CHANNEL_2, FORCE_JOIN_LINK_2),
+        (fj.get("channel_1", ""), fj.get("link_1", "")),
+        (fj.get("channel_2", ""), fj.get("link_2", "")),
     ]
     channels = [(chat_id, link) for chat_id, link in channels if chat_id and link]
     missing = []
