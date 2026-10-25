@@ -20,6 +20,7 @@
 
 
 import os, certifi
+import hashlib
 os.environ["SSL_CERT_FILE"] = certifi.where()
 os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
 import asyncio
@@ -29,7 +30,8 @@ from html import escape
 from aiogram import Bot, Dispatcher, BaseMiddleware, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode, ChatMemberStatus
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message, Update
+from aiohttp import web
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import (BOT_TOKEN, QC_API_BASE, ADMIN_IDS, FORCE_JOIN_CHANNEL_1,
@@ -239,16 +241,57 @@ async def main():
     bg = [asyncio.create_task(otp.otp_loop()), asyncio.create_task(smm.smm_loop()),
           asyncio.create_task(flows.catalog_warm_loop()),
           asyncio.create_task(flows.s3_refund_retry_loop())]
+    runner = None
     try:
-        await bot.delete_webhook(drop_pending_updates=False)
         me = await bot.get_me()
-        print(f"[bot] @{me.username} is running. Admins: {ADMIN_IDS}")
-        await dp.start_polling(bot)
+        render_url = os.getenv("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
+        if render_url:
+            webhook_secret = hashlib.sha256(BOT_TOKEN.encode("utf-8")).hexdigest()
+            app = web.Application()
+            app.router.add_get("/", lambda request: web.json_response({
+                "service": "Nexora Telegram Bot", "status": "ok", "bot": me.username
+            }))
+            app.router.add_get("/health", lambda request: web.json_response({
+                "status": "ok", "service": "telegram-webhook"
+            }))
+
+            async def telegram_webhook(request):
+                if request.headers.get("X-Telegram-Bot-Api-Secret-Token") != webhook_secret:
+                    raise web.HTTPForbidden(text="Invalid webhook secret")
+                try:
+                    payload = await request.json()
+                    update = Update.model_validate(payload, context={"bot": bot})
+                    await dp.feed_update(bot, update)
+                except Exception:
+                    logging.exception("Failed to process Telegram webhook update")
+                    raise web.HTTPInternalServerError(text="Update processing failed")
+                return web.Response(text="OK")
+
+            app.router.add_post("/telegram", telegram_webhook)
+            runner = web.AppRunner(app)
+            await runner.setup()
+            site = web.TCPSite(runner, "0.0.0.0", int(os.getenv("PORT", "10000")))
+            await site.start()
+            await bot.set_webhook(
+                url=f"{render_url}/telegram",
+                secret_token=webhook_secret,
+                allowed_updates=dp.resolve_used_update_types(),
+                drop_pending_updates=False,
+            )
+            print(f"[bot] @{me.username} is running in Render webhook mode at {render_url}. Admins: {ADMIN_IDS}")
+            await asyncio.Event().wait()
+        else:
+            await bot.delete_webhook(drop_pending_updates=False)
+            print(f"[bot] @{me.username} is running in polling mode. Admins: {ADMIN_IDS}")
+            await dp.start_polling(bot)
     finally:
+        if runner:
+            await runner.cleanup()
         for t in bg:
             t.cancel()
         await bot.session.close()
         await qc.close_session()
+
 
 
 if __name__ == "__main__":
