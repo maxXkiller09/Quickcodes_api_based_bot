@@ -54,12 +54,19 @@ async def _ambiguous(server_name, uid, what, d):
 # =====================================================================
 #                           SERVER 2  (Telegram accounts)
 # =====================================================================
+# Catalog caches keep service menus responsive while limiting provider API traffic.
+S2_COUNTRIES_CACHE_TTL = 60
+S3_CATALOG_CACHE_TTL = 1800
+S3_COUNTRIES_CACHE_TTL = 180
+S3_OFFERS_CACHE_TTL = 60
+SMM_CATALOG_CACHE_TTL = 1800
+
 _s2 = {"t": 0.0, "rows": None}
 
 
 async def s2_rows(force=False):
     now = time.time()
-    if not force and _s2["rows"] is not None and now - _s2["t"] < 15:
+    if not force and _s2["rows"] is not None and now - _s2["t"] < S2_COUNTRIES_CACHE_TTL:
         return _s2["rows"]
     st, d = await qc("s2", "GET", "/v1/s2/countries")
     if d.get("ok"):
@@ -135,7 +142,7 @@ _off3 = {}
 
 async def s3_catalog():
     now = time.time()
-    if _cat3["v"] and now - _cat3["t"] < 600:
+    if _cat3["v"] and now - _cat3["t"] < S3_CATALOG_CACHE_TTL:
         return _cat3["v"]
     items, offset = {}, 0
     while True:
@@ -184,7 +191,7 @@ async def s3_countries(sid, full=False, force=False):
     key = (sid, bool(full))
     now = time.time()
     c = _cty3.get(key)
-    if not force and c and now - c["t"] < 60:
+    if not force and c and now - c["t"] < S3_COUNTRIES_CACHE_TTL:
         rows = c["rows"]
     else:
         st, d = await qc("s3", "GET", "/v1/s3/countries", params={"service": sid, "full": int(bool(full))}, timeout=45)
@@ -213,7 +220,7 @@ async def s3_offers(sid, cid, force=False):
     key = (sid, str(cid))
     now = time.time()
     c = _off3.get(key)
-    if not force and c and now - c["t"] < 20:
+    if not force and c and now - c["t"] < S3_OFFERS_CACHE_TTL:
         data = c
     else:
         st, d = await qc("s3", "GET", "/v1/s3/offers", params={"service": sid, "country": cid}, timeout=45)
@@ -344,7 +351,7 @@ def is_package(s):
 
 async def smm_catalog():
     now = time.time()
-    if _smm["v"] and now - _smm["t"] < 600:
+    if _smm["v"] and now - _smm["t"] < SMM_CATALOG_CACHE_TTL:
         return _smm["v"]
     rows, offset = [], 0
     while True:
