@@ -163,3 +163,45 @@ async def refund_once(uid, amount, refund_id):
             f"(refund key <code>{refund_id}</code>) - investigate before manual credit"
         )
         return "failed"
+
+
+
+async def credit_once(uid, amount, credit_id):
+    """Credit a payment at most once, atomically with its idempotency key.
+
+    The key and balance change are part of one MongoDB update. If the client
+    gets a timeout after MongoDB committed, read-after-error distinguishes that
+    case from a write that did not happen.
+    Returns 'applied', 'already_applied', or 'failed'.
+    """
+    amount = round(float(amount), 2)
+    if amount <= 0 or not credit_id:
+        return "failed"
+
+    key = str(credit_id)
+    try:
+        result = await users.update_one(
+            {"_id": uid, "credit_keys": {"$ne": key}},
+            {"$inc": {"balance": amount}, "$addToSet": {"credit_keys": key}},
+        )
+        if getattr(result, "modified_count", 0) == 1:
+            return "applied"
+    except Exception as e:
+        # A network timeout can happen after the server committed the write.
+        print(f"[wallet] credit write uncertain user={uid} amount={amount} key={key}: {e!r}")
+
+    try:
+        user = await users.find_one({"_id": uid}, {"credit_keys": 1})
+    except Exception as e:
+        print(f"[wallet] credit verification failed user={uid} key={key}: {e!r}")
+        user = None
+
+    if user and key in (user.get("credit_keys") or []):
+        return "already_applied"
+
+    await notify.alert_admins(
+        f"🚨 <b>PAYMENT CREDIT NEEDS REVIEW</b> user <code>{uid}</code> "
+        f"amount ₹{amount:g} (credit key <code>{key}</code>). "
+        "Verify wallet and transaction before any manual adjustment."
+    )
+    return "failed"
