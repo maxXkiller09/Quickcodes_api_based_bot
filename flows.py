@@ -502,14 +502,22 @@ def _singleflight(key_builder):
     def decorate(func):
         async def wrapped(*args, **kwargs):
             key = (func.__name__, key_builder(*args, **kwargs))
-            lock = _catalog_locks.get(key)
-            if lock is None:
-                lock = asyncio.Lock()
-                _catalog_locks[key] = lock
-            async with lock:
-                # Re-check happens inside the original function after waiting;
-                # a prior caller may already have populated the cache.
-                return await func(*args, **kwargs)
+            # Track waiters as well as the active caller. Removing an idle lock
+            # prevents this registry growing forever as users query new IDs.
+            entry = _catalog_locks.get(key)
+            if entry is None:
+                entry = {"lock": asyncio.Lock(), "users": 0}
+                _catalog_locks[key] = entry
+            entry["users"] += 1
+            try:
+                async with entry["lock"]:
+                    # Re-check happens inside the original function after waiting;
+                    # a prior caller may already have populated the cache.
+                    return await func(*args, **kwargs)
+            finally:
+                entry["users"] -= 1
+                if entry["users"] == 0 and _catalog_locks.get(key) is entry:
+                    _catalog_locks.pop(key, None)
         wrapped.__name__ = func.__name__
         wrapped.__doc__ = func.__doc__
         return wrapped
