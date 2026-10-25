@@ -80,24 +80,70 @@ async def utr_lookup(utr, amount):
     return "notfound", res
 
 
+async def has_retryable_auto_upi(uid, amount, utr):
+    """True only when this user has an interrupted credit for this exact UTR."""
+    key = clean_id(utr)
+    if not key:
+        return False
+    row = await txns.find_one({
+        "method": "auto_upi", "status": "credit_pending", "user_id": uid,
+        "amount": round(float(amount), 2),
+        "$or": [{"utr": key}, {"transaction_id": key}],
+    })
+    return row is not None
+
+
 async def auto_upi_credit(uid, username, full_name, amount, utr, res):
-    """Payment was found by the API -> credit once. -> ('ok', new_balance) | ('claimed', None) | ('error', None)"""
-    found_utr = clean_id(res.get("utr"))
+    """Verified Auto-UPI payment with durable, idempotent retry semantics."""
+    found_utr = clean_id(res.get("utr")) or clean_id(utr)
     found_txn = clean_id(res.get("transaction_id"))
-    ids = [utr, found_utr, found_txn]
-    if await id_in_use([found_utr, found_txn]) or not await claim_ids(ids, {"user_id": uid, "source": "auto_upi"}):
-        return "claimed", None
-    amt = float(amount)
+    ids = list(dict.fromkeys(i for i in [clean_id(utr), found_utr, found_txn] if i))
+    amt = round(float(amount), 2)
+
+    # Resume the exact pending transaction before duplicate checks; its UTR claims
+    # are intentionally retained after an uncertain write.
+    pending = await txns.find_one({
+        "method": "auto_upi", "status": "credit_pending", "user_id": uid, "amount": amt,
+        "$or": [{"utr": {"$in": ids}}, {"transaction_id": {"$in": ids}}],
+    }) if ids else None
+
+    if pending:
+        txn = pending
+    else:
+        if await id_in_use(ids) or not await claim_ids(
+            ids, {"user_id": uid, "source": "auto_upi"}
+        ):
+            return "claimed", None
+        try:
+            created = await txns.insert_one({
+                "user_id": uid, "username": username, "full_name": full_name, "amount": amt,
+                "method": "auto_upi", "utr": found_utr, "transaction_id": found_txn or None,
+                "status": "credit_pending", "created_at": utcnow(),
+            })
+            txn = {"_id": created.inserted_id, "user_id": uid, "amount": amt}
+        except Exception as e:
+            # Do not release UTR claims on an ambiguous insert result.
+            print(f"[auto upi] transaction insert uncertain: {e!r}")
+            return "error", None
+
     try:
-        await txns.insert_one({"user_id": uid, "username": username, "full_name": full_name, "amount": amt,
-                               "method": "auto_upi", "utr": found_utr or utr, "transaction_id": found_txn,
-                               "status": "approved", "created_at": utcnow()})
-        await users.update_one({"_id": uid}, {"$inc": {"balance": amt}})
+        credit_status = await credit_once(uid, amt, f"auto-upi:{txn['_id']}")
     except Exception as e:
-        print(f"[auto upi] credit error: {e!r}")
-        await used_utrs.delete_many({"_id": {"$in": [i for i in ids if i]}})
+        print(f"[auto upi] credit status uncertain: {e!r}")
         return "error", None
-    u = await users.find_one({"_id": uid}) or {}
+    if credit_status not in ("applied", "already_applied"):
+        return "error", None
+
+    try:
+        await txns.update_one(
+            {"_id": txn["_id"], "status": "credit_pending"},
+            {"$set": {"status": "approved", "credited_at": utcnow()}},
+        )
+        u = await users.find_one({"_id": uid}) or {}
+    except Exception as e:
+        # Credit key is durable, so the next retry safely completes the state change.
+        print(f"[auto upi] finalization uncertain: {e!r}")
+        return "error", None
     return "ok", float(u.get("balance", amt))
 
 
