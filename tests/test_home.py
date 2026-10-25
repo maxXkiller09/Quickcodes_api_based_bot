@@ -41,3 +41,95 @@ def test_home_view_handles_missing_wallet_document(monkeypatch):
     assert "₹0.00" in text
     assert "New User" in text
     assert keyboard.inline_keyboard
+
+def test_profile_handler_escapes_profile_fields_and_shows_navigation(monkeypatch):
+    class User:
+        id = 42
+        username = "<sam>"
+        full_name = "<Sam & Co>"
+
+    class Callback:
+        from_user = User()
+
+        def __init__(self):
+            self.answered = False
+
+        async def answer(self):
+            self.answered = True
+
+    async def fake_find_one(query):
+        assert query == {"_id": 42}
+        return {"balance": 7}
+
+    captured = {}
+
+    async def fake_edit(target, text, markup=None):
+        captured["text"] = text
+        captured["markup"] = markup
+
+    monkeypatch.setattr(home.users, "find_one", fake_find_one)
+    monkeypatch.setattr(home, "edit", fake_edit)
+    cq = Callback()
+    asyncio.run(home.profile(cq))
+
+    assert "&lt;Sam &amp; Co&gt;" in captured["text"]
+    assert "@&lt;sam&gt;" in captured["text"]
+    assert "₹7.00" in captured["text"]
+    callbacks = {
+        button.callback_data
+        for row in captured["markup"].inline_keyboard
+        for button in row
+        if button.callback_data
+    }
+    assert {"history", "recharge", "back_main"} <= callbacks
+    assert cq.answered is True
+
+
+def test_history_empty_state_offers_browse_and_profile(monkeypatch):
+    class FakeCursor:
+        def sort(self, *args):
+            return self
+
+        def limit(self, count):
+            return self
+
+        async def to_list(self, count):
+            return []
+
+    class User:
+        id = 7
+
+    class Callback:
+        from_user = User()
+
+        def __init__(self):
+            self.answered = False
+
+        async def answer(self):
+            self.answered = True
+
+    captured = {}
+
+    def fake_find(query):
+        assert query == {"user_id": 7}
+        return FakeCursor()
+
+    async def fake_edit(target, text, markup=None):
+        captured["text"] = text
+        captured["markup"] = markup
+
+    monkeypatch.setattr(home.orders, "find", fake_find)
+    monkeypatch.setattr(home, "edit", fake_edit)
+    cq = Callback()
+    asyncio.run(home.history(cq))
+
+    assert "haven't placed an order yet" in captured["text"]
+    callbacks = {
+        button.callback_data
+        for row in captured["markup"].inline_keyboard
+        for button in row
+        if button.callback_data
+    }
+    assert {"back_main", "stats"} <= callbacks
+    assert cq.answered is True
+
