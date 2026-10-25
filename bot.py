@@ -26,12 +26,14 @@ import asyncio
 import logging
 import re
 from html import escape
-from aiogram import Bot, Dispatcher, BaseMiddleware
+from aiogram import Bot, Dispatcher, BaseMiddleware, F
 from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
+from aiogram.enums import ParseMode, ChatMemberStatus
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from config import BOT_TOKEN, QC_API_BASE, ADMIN_IDS
+from config import (BOT_TOKEN, QC_API_BASE, ADMIN_IDS, FORCE_JOIN_CHANNEL_1,
+                    FORCE_JOIN_LINK_1, FORCE_JOIN_CHANNEL_2, FORCE_JOIN_LINK_2)
 from db import users, init_indexes, get_settings, utcnow
 import qc
 import notify
@@ -124,13 +126,96 @@ class UserMiddleware(BaseMiddleware):
         return await handler(event, data)
 
 
+class ForceJoinMiddleware(BaseMiddleware):
+    """Require membership in both configured channels before using the bot."""
+    def __init__(self):
+        self.channels = [
+            (FORCE_JOIN_CHANNEL_1, FORCE_JOIN_LINK_1, "Channel 1"),
+            (FORCE_JOIN_CHANNEL_2, FORCE_JOIN_LINK_2, "Channel 2"),
+        ]
+        self.channels = [(chat, link, label) for chat, link, label in self.channels if chat and link]
+
+    async def __call__(self, handler, event, data):
+        user = getattr(event, "from_user", None)
+        if (not self.channels or not user or user.is_bot or user.id in ADMIN_IDS
+                or (isinstance(event, CallbackQuery) and event.data == "force_join_check")):
+            return await handler(event, data)
+
+        bot = data.get("bot")
+        missing = []
+        for chat_id, invite_link, label in self.channels:
+            try:
+                member = await bot.get_chat_member(chat_id=chat_id, user_id=user.id)
+                if member.status not in (ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR,
+                                         ChatMemberStatus.CREATOR) and not (
+                    member.status == ChatMemberStatus.RESTRICTED and getattr(member, "is_member", False)
+                ):
+                    missing.append((invite_link, label))
+            except Exception as exc:
+                logging.warning("Force-join check failed for %s: %r", label, exc)
+                # Fail closed when a configured channel cannot be verified.
+                missing.append((invite_link, label))
+
+        if not missing:
+            return await handler(event, data)
+
+        rows = [[InlineKeyboardButton(text=f"📢 Join {label}", url=link)]
+                for link, label in missing]
+        rows.append([InlineKeyboardButton(text="✅ I've Joined — Check Again", callback_data="force_join_check")])
+        markup = InlineKeyboardMarkup(inline_keyboard=rows)
+        prompt = ("🔒 <b>One quick step!</b>\n\n"
+                  "Join both Nexora community channels below, then tap <b>I've Joined</b> to continue.")
+        if isinstance(event, CallbackQuery):
+            await event.answer("Please join the required channels first.", show_alert=True)
+            if event.message:
+                await event.message.answer(prompt, reply_markup=markup)
+        elif isinstance(event, Message):
+            await event.answer(prompt, reply_markup=markup)
+        return None
+
+
+async def force_join_check(cq):
+    """Re-check membership after the user taps the force-join confirmation button."""
+    channels = [
+        (FORCE_JOIN_CHANNEL_1, FORCE_JOIN_LINK_1),
+        (FORCE_JOIN_CHANNEL_2, FORCE_JOIN_LINK_2),
+    ]
+    channels = [(chat_id, link) for chat_id, link in channels if chat_id and link]
+    missing = []
+    for chat_id, link in channels:
+        try:
+            member = await cq.bot.get_chat_member(chat_id=chat_id, user_id=cq.from_user.id)
+            if member.status not in (ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR,
+                                     ChatMemberStatus.CREATOR) and not (
+                member.status == ChatMemberStatus.RESTRICTED and getattr(member, "is_member", False)
+            ):
+                missing.append(link)
+        except Exception as exc:
+            logging.warning("Force-join recheck failed for %s: %r", chat_id, exc)
+            missing.append(link)
+
+    if missing:
+        await cq.answer("You still need to join both required channels.", show_alert=True)
+        return
+    await cq.answer("Membership verified! 🎉")
+    if cq.message:
+        try:
+            await cq.message.delete()
+        except Exception:
+            pass
+        await cq.message.answer("✅ <b>You're all set!</b> Send /start to open Nexora.")
+
+
 async def main():
     bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher(storage=MemoryStorage())
+    dp.message.outer_middleware(ForceJoinMiddleware())
+    dp.callback_query.outer_middleware(ForceJoinMiddleware())
     dp.message.outer_middleware(ActivityMiddleware())
     dp.callback_query.outer_middleware(ActivityMiddleware())
     dp.message.outer_middleware(UserMiddleware())
     dp.callback_query.outer_middleware(UserMiddleware())
+    dp.callback_query.register(force_join_check, F.data == "force_join_check")
 
     # admin first so its text prompts always win
     for r in (admin.router, recharge.router, fampay.router, tg.router, otp.router, smm.router, home.router, sandbox.router):
