@@ -144,7 +144,8 @@ async def main():
     if missing:
         print(f"[bot] !!! API keys not set yet for: {', '.join(missing)}  ->  send /admin → API Keys")
 
-    bg = [asyncio.create_task(otp.otp_loop()), asyncio.create_task(smm.smm_loop()),\n          asyncio.create_task(flows.catalog_warm_loop())]
+    bg = [asyncio.create_task(otp.otp_loop()), asyncio.create_task(smm.smm_loop()),
+          asyncio.create_task(flows.catalog_warm_loop())]
     try:
         await bot.delete_webhook(drop_pending_updates=False)
         me = await bot.get_me()
