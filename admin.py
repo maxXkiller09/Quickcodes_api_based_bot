@@ -166,15 +166,25 @@ async def svc_toggle(cq: CallbackQuery):
 # ============================== profit % ==============================
 async def render_profit(cq):
     s = await get_settings()
-    lines = [
-        "• <b>Telegram Accounts</b> (cheapest provider rate): <b>0%</b> — fixed",
-        *[f"• <b>{n}</b> ({d}): <b>{float(s['profit'].get(k, 0)):g}%</b>" for k, n, d in APIS if k != "s2"],
-    ]
-    rows = [[B(f"✏️ {n} profit %", f"adm:pset:{k}")] for k, n, d in APIS if k != "s2"]
-    rows.append([B("⬅️ Back", "adm:home")])
-    await edit(cq, f"📈 <b>Profit %</b>\\n{SEP}\\n" + "\\n".join(lines) +
-               "\\n\\n<i>Telegram Accounts use the current Quick Codes API price with no added markup. Other services add their configured percentage.</i>", KB(*rows))
-
+    # Keep every provider/service on its own row so pricing controls are easy to scan.
+    text = (
+        "📈 <b>Service Profit Settings</b>\n"
+        f"{SEP}\n"
+        "Choose a service to view or change its markup.\n\n"
+        "🟦 <b>Server 2 · Telegram Accounts</b>\n"
+        "Profit: <b>0% (fixed)</b>\n"
+        "<i>Uses the current Quick Codes provider price with no added markup.</i>\n\n"
+        "🟪 <b>Server 3 · OTP + WhatsApp</b>\n"
+        f"Profit: <b>{float(s['profit'].get('s3', 0)):g}%</b>\n\n"
+        "🟩 <b>SMM Panel · Social Media</b>\n"
+        f"Profit: <b>{float(s['profit'].get('smm', 0)):g}%</b>"
+    )
+    kb = KB(
+        [B(f"✏️ Server 3 profit · {float(s['profit'].get('s3', 0)):g}%", "adm:pset:s3")],
+        [B(f"✏️ SMM Panel profit · {float(s['profit'].get('smm', 0)):g}%", "adm:pset:smm")],
+        [B("⬅️ Admin Home", "adm:home")],
+    )
+    await edit(cq, text, kb)
 
 @router.callback_query(F.data == "adm:profit", IS_ADMIN)
 async def profit(cq: CallbackQuery, state: FSMContext):
