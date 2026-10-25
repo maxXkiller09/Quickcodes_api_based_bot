@@ -22,7 +22,7 @@
 """All money-moving logic (no Telegram code here, so it can be tested on its own)."""
 import asyncio
 import time
-from db import (orders, tasks, smm_orders, users, profit_pct, charge, refund, refund_once, get_balance, utcnow)
+from db import (orders, tasks, smm_orders, users, profit_pct, charge, refund, refund_once, get_balance, utcnow, get_settings)
 from qc import qc, explain, BUSY_USER
 import notify
 
@@ -530,3 +530,40 @@ s3_catalog = _singleflight(lambda *a, **k: "all")(s3_catalog)
 s3_countries = _singleflight(lambda sid, full=False, force=False: (str(sid), bool(full), bool(force)))(s3_countries)
 s3_offers = _singleflight(lambda sid, cid, force=False: (str(sid), str(cid), bool(force)))(s3_offers)
 smm_catalog = _singleflight(lambda *a, **k: "all")(smm_catalog)
+
+
+
+async def warm_catalogs_once():
+    """Refresh configured top-level catalogs without blocking unrelated services."""
+    settings = await get_settings()
+    keys = settings.get("api_keys") or {}
+    pending = []
+    if keys.get("s2"):
+        pending.append(("s2", s2_rows()))
+    if keys.get("s3"):
+        pending.append(("s3", s3_catalog()))
+    if keys.get("smm"):
+        pending.append(("smm", smm_catalog()))
+    if not pending:
+        return {}
+    results = await asyncio.gather(*(coro for _, coro in pending), return_exceptions=True)
+    output = {}
+    for (name, _), result in zip(pending, results):
+        if isinstance(result, BaseException):
+            print(f"[catalog warmup] {name} refresh failed: {result!r}")
+            output[name] = None
+        else:
+            output[name] = result
+    return output
+
+
+async def catalog_warm_loop(interval=45):
+    """Keep frequently used service menus warm; cache TTLs still control API traffic."""
+    while True:
+        try:
+            await warm_catalogs_once()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            print(f"[catalog warmup] cycle failed: {e!r}")
+        await asyncio.sleep(max(15, int(interval)))

@@ -35,7 +35,7 @@ from config import BOT_TOKEN, QC_API_BASE, ADMIN_IDS
 from db import users, init_indexes, get_settings, utcnow
 import qc
 import notify
-import admin, recharge, fampay, tg, otp, smm, home, sandbox
+import admin, recharge, fampay, tg, otp, smm, home, sandbox, flows
 
 logging.basicConfig(level=logging.INFO)
 
@@ -144,7 +144,8 @@ async def main():
     if missing:
         print(f"[bot] !!! API keys not set yet for: {', '.join(missing)}  ->  send /admin → API Keys")
 
-    bg = [asyncio.create_task(otp.otp_loop()), asyncio.create_task(smm.smm_loop())]
+    bg = [asyncio.create_task(otp.otp_loop()), asyncio.create_task(smm.smm_loop()),
+          asyncio.create_task(flows.catalog_warm_loop())]
     try:
         await bot.delete_webhook(drop_pending_updates=False)
         me = await bot.get_me()
