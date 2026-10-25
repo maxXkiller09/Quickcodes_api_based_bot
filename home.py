@@ -23,9 +23,9 @@ from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
-from config import BOT_TITLE
+from config import BOT_TITLE, SUPPORT_LINK
 from db import users, orders
-from utils import B, KB, esc, fmt_curr, edit, SEP
+from utils import B, KB, esc, fmt_curr, edit, SEP, normalize_support
 
 router = Router()
 
@@ -38,20 +38,22 @@ async def home_view(uid, full_name):
         f"✦ <b>{esc(BOT_TITLE)}</b>\n"
         f"<i>Your digital services, in one place.</i>\n"
         f"{SEP}\n"
-        f"Hey {mention}, welcome back 👋\n\n"
+        f"Hey {mention}, welcome to your dashboard 👋\n\n"
         f"💳 <b>YOUR WALLET</b>\n"
         f"<blockquote><b>{balance}</b></blockquote>\n"
-        f"🛍 <b>What would you like to do?</b>\n"
+        f"🛍 <b>Pick a service to get started</b>\n"
         f"<i>Telegram accounts are listed at the current provider rate — no added markup.</i>\n"
-        f"\n<code>Simple • Secure • Easy to track</code>"
+        f"\n<code>Simple • Clear pricing • Order history</code>"
     )
-    kb = KB(
+    rows = [
         [B("✈️  Telegram Accounts", "buy")],
         [B("💬  WhatsApp Accounts", "wp_terms"), B("📲  Apps OTP", "s3_user_root")],
         [B("📈  Social Media Services", "feature_smm_external")],
         [B("➕ Add Funds", "recharge"), B("👤 My Profile", "stats")],
-    )
-    return text, kb
+    ]
+    if SUPPORT_LINK:
+        rows.append([B("🛟 Help & Support", url=normalize_support(SUPPORT_LINK))])
+    return text, KB(*rows)
 
 
 @router.message(Command("start"))
