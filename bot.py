@@ -190,7 +190,7 @@ async def force_join_check(cq):
     missing = []
     for chat_id, link in channels:
         try:
-                chat_ref = int(chat_id) if re.fullmatch(r"-?\d+", str(chat_id)) else chat_id
+            chat_ref = int(chat_id) if re.fullmatch(r"-?\d+", str(chat_id)) else chat_id
             member = await cq.bot.get_chat_member(chat_id=chat_ref, user_id=cq.from_user.id)
             if member.status not in (ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR,
                                      ChatMemberStatus.CREATOR) and not (
