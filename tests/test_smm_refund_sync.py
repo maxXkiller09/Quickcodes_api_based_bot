@@ -107,7 +107,7 @@ def test_refund_is_capped_at_amount_user_paid(monkeypatch):
 
     monkeypatch.setattr(flows, "smm_orders", collection)
     monkeypatch.setattr(flows, "qc", oversized_provider_refund)
-    monkeypatch.setattr(flows, "refund", lambda uid, amount: record(refunds, uid, amount))
+    monkeypatch.setattr(flows, "refund_once", lambda uid, amount, key: record_refund_once(refunds, uid, amount, key))
 
     fresh, got = run(flows.smm_sync_order(order))
 
