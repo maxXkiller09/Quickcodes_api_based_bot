@@ -13,7 +13,7 @@ import home
 
 
 def test_home_view_escapes_user_name_and_renders_core_navigation(monkeypatch):
-    async def fake_find_one(query):
+    async def fake_find_one(query, projection=None):
         assert query == {"_id": 42}
         return {"balance": 12.5}
 
@@ -35,7 +35,7 @@ def test_home_view_escapes_user_name_and_renders_core_navigation(monkeypatch):
 
 
 def test_home_view_handles_missing_wallet_document(monkeypatch):
-    async def fake_find_one(query):
+    async def fake_find_one(query, projection=None):
         return None
 
     monkeypatch.setattr(home.users, "find_one", fake_find_one)
@@ -62,7 +62,7 @@ def test_profile_handler_escapes_profile_fields_and_shows_navigation(monkeypatch
         async def answer(self):
             self.answered = True
 
-    async def fake_find_one(query):
+    async def fake_find_one(query, projection=None):
         assert query == {"_id": 42}
         return {"balance": 7}
 
@@ -140,7 +140,7 @@ def test_history_empty_state_offers_browse_and_profile(monkeypatch):
 
 
 def test_home_view_adds_support_button_only_when_configured(monkeypatch):
-    async def fake_find_one(query):
+    async def fake_find_one(query, projection=None):
         return {"balance": 0}
 
     monkeypatch.setattr(home.users, "find_one", fake_find_one)
