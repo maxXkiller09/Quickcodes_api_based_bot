@@ -26,7 +26,7 @@ import asyncio
 import logging
 import re
 from html import escape
-from aiogram import Bot, Dispatcher, BaseMiddleware
+from aiogram import Bot, Dispatcher, BaseMiddleware, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode, ChatMemberStatus
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -174,6 +174,38 @@ class ForceJoinMiddleware(BaseMiddleware):
         return None
 
 
+async def force_join_check(cq):
+    """Re-check membership after the user taps the force-join confirmation button."""
+    channels = [
+        (FORCE_JOIN_CHANNEL_1, FORCE_JOIN_LINK_1),
+        (FORCE_JOIN_CHANNEL_2, FORCE_JOIN_LINK_2),
+    ]
+    channels = [(chat_id, link) for chat_id, link in channels if chat_id and link]
+    missing = []
+    for chat_id, link in channels:
+        try:
+            member = await cq.bot.get_chat_member(chat_id=chat_id, user_id=cq.from_user.id)
+            if member.status not in (ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR,
+                                     ChatMemberStatus.CREATOR) and not (
+                member.status == ChatMemberStatus.RESTRICTED and getattr(member, "is_member", False)
+            ):
+                missing.append(link)
+        except Exception as exc:
+            logging.warning("Force-join recheck failed for %s: %r", chat_id, exc)
+            missing.append(link)
+
+    if missing:
+        await cq.answer("You still need to join both required channels.", show_alert=True)
+        return
+    await cq.answer("Membership verified! 🎉")
+    if cq.message:
+        try:
+            await cq.message.delete()
+        except Exception:
+            pass
+        await cq.message.answer("✅ <b>You're all set!</b> Send /start to open Nexora.")
+
+
 async def main():
     bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher(storage=MemoryStorage())
@@ -183,6 +215,7 @@ async def main():
     dp.callback_query.outer_middleware(ActivityMiddleware())
     dp.message.outer_middleware(UserMiddleware())
     dp.callback_query.outer_middleware(UserMiddleware())
+    dp.callback_query.register(force_join_check, F.data == "force_join_check")
 
     # admin first so its text prompts always win
     for r in (admin.router, recharge.router, fampay.router, tg.router, otp.router, smm.router, home.router, sandbox.router):
