@@ -67,12 +67,12 @@ def test_partial_refund_scales_provider_amount_to_user_price(monkeypatch):
     refunds = []
     monkeypatch.setattr(flows, "smm_orders", collection)
     monkeypatch.setattr(flows, "qc", provider_refund)
-    monkeypatch.setattr(flows, "refund", lambda uid, amount: record(refunds, uid, amount))
+    monkeypatch.setattr(flows, "refund_once", lambda uid, amount, key: record_refund_once(refunds, uid, amount, key))
 
     fresh, got = run(flows.smm_sync_order(order))
 
     assert got == 6.0
-    assert refunds == [(77, 6.0)]
+    assert refunds == [(77, 6.0, "smm:fake-order-doc:provider-refund")]
     assert fresh["refunded"] is True
     assert fresh["refund_amount"] == 6.0
     assert fresh["status"] == "partial"
@@ -87,11 +87,11 @@ def test_repeated_sync_does_not_issue_duplicate_refund(monkeypatch):
     monkeypatch.setattr(flows, "refund", lambda uid, amount: record(refunds, uid, amount))
 
     first = run(flows.smm_sync_order(order))
-    second = run(flows.smm_sync_order(order))
+    second = run(flows.smm_sync_order(first[0]))
 
     assert first[1] == 6.0
     assert second[1] == 0.0
-    assert refunds == [(77, 6.0)]
+    assert refunds == [(77, 6.0, "smm:fake-order-doc:provider-refund")]
     assert collection.refund_claims == 1
 
 
@@ -113,9 +113,55 @@ def test_refund_is_capped_at_amount_user_paid(monkeypatch):
 
     assert got == 8.0
     assert fresh["refund_amount"] == 8.0
-    assert refunds == [(77, 8.0)]
+    assert refunds == [(77, 8.0, "smm:fake-order-doc:provider-refund")]
 
 
-async def record(calls, uid, amount):
-    calls.append((uid, amount))
-    return True
+async def record_refund_once(calls, uid, amount, key):
+    if any(row[2] == key for row in calls):
+        return "already_applied"
+    calls.append((uid, amount, key))
+    return "applied"
+
+
+def test_wallet_refund_failure_leaves_order_retryable(monkeypatch):
+    order = sample_order()
+    collection = FakeSmmOrders(order)
+    outcomes = iter(["failed", "applied"])
+    refunds = []
+
+    async def flaky_refund(uid, amount, key):
+        refunds.append((uid, amount, key))
+        return next(outcomes)
+
+    monkeypatch.setattr(flows, "smm_orders", collection)
+    monkeypatch.setattr(flows, "qc", provider_refund)
+    monkeypatch.setattr(flows, "refund_once", flaky_refund)
+
+    first, got_first = run(flows.smm_sync_order(order))
+    assert got_first == 0.0
+    assert first["refunded"] is False
+    assert first["refund_amount"] == 0.0
+
+    second, got_second = run(flows.smm_sync_order(first))
+    assert got_second == 6.0
+    assert second["refunded"] is True
+    assert second["refund_amount"] == 6.0
+    assert len(refunds) == 2
+
+
+def test_already_applied_wallet_refund_repairs_order_state_without_recredit(monkeypatch):
+    order = sample_order()
+    collection = FakeSmmOrders(order)
+    monkeypatch.setattr(flows, "smm_orders", collection)
+    monkeypatch.setattr(flows, "qc", provider_refund)
+    monkeypatch.setattr(flows, "refund_once", lambda *args: value("already_applied"))
+
+    fresh, got = run(flows.smm_sync_order(order))
+
+    assert got == 0.0
+    assert fresh["refunded"] is True
+    assert fresh["refund_amount"] == 6.0
+
+
+async def value(result):
+    return result
