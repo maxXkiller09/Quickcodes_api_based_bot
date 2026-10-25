@@ -40,3 +40,11 @@ QC_API_BASE = _need("QC_API_BASE").rstrip("/")             # Quick Codes API add
 
 BOT_TITLE = os.getenv("BOT_TITLE", "Nexora")   # name shown on the home screen
 SUPPORT_LINK = os.getenv("SUPPORT_LINK", "").strip()      # optional "Contact Support" button on payment problems
+
+
+# Optional two-channel force join. Set channel usernames (e.g. @mychannel)
+# or numeric Telegram chat IDs (private channels usually use -100... IDs).
+FORCE_JOIN_CHANNEL_1 = os.getenv("FORCE_JOIN_CHANNEL_1", "").strip()
+FORCE_JOIN_LINK_1 = os.getenv("FORCE_JOIN_LINK_1", "").strip()
+FORCE_JOIN_CHANNEL_2 = os.getenv("FORCE_JOIN_CHANNEL_2", "").strip()
+FORCE_JOIN_LINK_2 = os.getenv("FORCE_JOIN_LINK_2", "").strip()
