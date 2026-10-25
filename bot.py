@@ -31,6 +31,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN, QC_API_BASE, ADMIN_IDS
 from db import users, init_indexes, get_settings, utcnow
+import qc
 import notify
 import admin, recharge, fampay, tg, otp, smm, home
 
@@ -38,19 +39,36 @@ logging.basicConfig(level=logging.INFO)
 
 
 class UserMiddleware(BaseMiddleware):
-    """every user gets a wallet the first time we see them"""
+    """Create wallets once and avoid a MongoDB read on every Telegram update."""
+    def __init__(self):
+        self._profiles = {}
+
     async def __call__(self, handler, event, data):
         u = getattr(event, "from_user", None)
         if u and not u.is_bot:
-            doc = await users.find_one({"_id": u.id}, {"username": 1})
-            if doc is None:
+            profile = (u.username, u.full_name)
+            cached = self._profiles.get(u.id)
+            if cached != profile:
                 try:
-                    await users.insert_one({"_id": u.id, "balance": 0.0, "username": u.username,
-                                            "name": u.full_name, "joined": utcnow()})
-                except Exception:
-                    pass
-            elif doc.get("username") != u.username:
-                await users.update_one({"_id": u.id}, {"$set": {"username": u.username, "name": u.full_name}})
+                    doc = await users.find_one({"_id": u.id}, {"username": 1, "name": 1})
+                    if doc is None:
+                        try:
+                            await users.insert_one({"_id": u.id, "balance": 0.0, "username": u.username,
+                                                    "name": u.full_name, "joined": utcnow()})
+                        except Exception:
+                            # A concurrent update may have created the wallet already.
+                            pass
+                    elif doc.get("username") != u.username or doc.get("name") != u.full_name:
+                        await users.update_one({"_id": u.id},
+                                               {"$set": {"username": u.username, "name": u.full_name}})
+                    self._profiles[u.id] = profile
+                    # Keep this lightweight cache bounded on long-running instances.
+                    if len(self._profiles) > 20000:
+                        self._profiles.clear()
+                        self._profiles[u.id] = profile
+                except Exception as e:
+                    # Do not block every handler solely because profile syncing failed.
+                    logging.warning("User profile sync failed for %s: %r", u.id, e)
         return await handler(event, data)
 
 
@@ -82,6 +100,7 @@ async def main():
         for t in bg:
             t.cancel()
         await bot.session.close()
+        await qc.close_session()
 
 
 if __name__ == "__main__":
