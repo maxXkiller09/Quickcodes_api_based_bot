@@ -403,3 +403,56 @@ async def credit_state(msg: Message, state: FSMContext):
 async def debit_state(msg: Message, state: FSMContext):
     await state.clear()
     await _apply(msg, msg.text, False)
+
+
+# ============================== force-join channels ==============================
+@router.message(Command("setforcechannel"), IS_ADMIN)
+async def set_force_channel_cmd(msg: Message, command: CommandObject):
+    """Set or remove either force-join channel without editing hosting variables."""
+    args = (command.args or "").split()
+    if not args or args[0].lower() in {"help", "?"}:
+        return await msg.answer(
+            "📢 <b>Force-join channel setup</b>\n\n"
+            "Set public channel: <code>/setforcechannel 1 @channelusername</code>\n"
+            "Or include link: <code>/setforcechannel 1 @channelusername https://t.me/channelusername</code>\n"
+            "Private channel: <code>/setforcechannel 2 -1001234567890 https://t.me/+invitecode</code>\n\n"
+            "Remove one: <code>/setforcechannel off 1</code>\n"
+            "Remove both: <code>/setforcechannel off all</code>\n"
+            "<i>Use slot 1 or 2. The bot must be an administrator in each required channel.</i>",
+            parse_mode="HTML",
+        )
+
+    if args[0].lower() in {"off", "disable", "remove"}:
+        if len(args) != 2 or args[1].lower() not in {"1", "2", "all"}:
+            return await msg.answer("❌ Use <code>/setforcechannel off 1</code>, <code>off 2</code>, or <code>off all</code>.", parse_mode="HTML")
+        slots = ("1", "2") if args[1].lower() == "all" else (args[1],)
+        updates = {}
+        for slot in slots:
+            updates[f"force_join.channel_{slot}"] = ""
+            updates[f"force_join.link_{slot}"] = ""
+        await set_setting(**updates)
+        return await msg.answer(f"✅ Force-join requirement removed for slot(s): {', '.join(slots)}. Changes apply within a few seconds.")
+
+    if args[0] not in {"1", "2"} or len(args) not in {2, 3}:
+        return await msg.answer("❌ Use <code>/setforcechannel 1 @channelusername [https://t.me/channelusername]</code>.", parse_mode="HTML")
+
+    slot, channel = args[0], args[1]
+    if not (channel.startswith("@") or re.fullmatch(r"-?\d{5,20}", channel)):
+        return await msg.answer("❌ Channel must be a public @username or numeric chat ID (private channel usually starts with -100).", parse_mode="HTML")
+
+    link = args[2] if len(args) == 3 else (f"https://t.me/{channel[1:]}" if channel.startswith("@") else "")
+    if not link.startswith(("https://t.me/", "https://telegram.me/")):
+        return await msg.answer("❌ Provide a valid https://t.me/ invite link. Private channels require their invite link.", parse_mode="HTML")
+
+    await set_setting(**{
+        f"force_join.channel_{slot}": channel,
+        f"force_join.link_{slot}": link,
+    })
+    await msg.answer(
+        f"✅ <b>Force-join Channel {slot} saved.</b>\n"
+        f"Channel: <code>{esc(channel)}</code>\nJoin link: {esc(link)}\n\n"
+        "⚠️ Make sure the bot is an administrator in that channel so Telegram membership checks work. "
+        "This setting is stored in the bot database; no Render environment-variable edit is needed.",
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
