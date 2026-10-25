@@ -1,3 +1,4 @@
+import utils
 from utils import B, KB, chunk, esc, fmt_curr, fmt_short, normalize_support, pager_row, short
 
 
@@ -41,6 +42,7 @@ def test_pager_row_has_correct_navigation_edges():
 def test_support_links_are_normalized():
     assert normalize_support("@nexora_help") == "https://t.me/nexora_help"
     assert normalize_support("t.me/nexora_help") == "https://t.me/nexora_help"
+    assert normalize_support("telegram.me/nexora_help") == "https://telegram.me/nexora_help"
     assert normalize_support("https://example.com/help") == "https://example.com/help"
     assert normalize_support("") == ""
 
@@ -50,3 +52,19 @@ def test_button_builder_supports_callback_and_url():
     url = B("Support", url="https://t.me/nexora_help")
     assert callback.callback_data == "open_menu"
     assert url.url == "https://t.me/nexora_help"
+    copy = B("Copy ID", copy="NEX-123")
+    assert copy.copy_text.text == "NEX-123"
+
+
+def test_spam_guard_uses_per_user_and_key_cooldowns(monkeypatch):
+    utils._last.clear()
+    clock = {"now": 100.0}
+    monkeypatch.setattr(utils.time, "time", lambda: clock["now"])
+
+    assert utils.is_spamming(1, "home", cooldown=3) is False
+    assert utils.is_spamming(1, "home", cooldown=3) is True
+    assert utils.is_spamming(1, "wallet", cooldown=3) is False
+    assert utils.is_spamming(2, "home", cooldown=3) is False
+    clock["now"] += 3.1
+    assert utils.is_spamming(1, "home", cooldown=3) is False
+    utils._last.clear()
