@@ -31,19 +31,19 @@ router = Router()
 
 
 async def home_view(uid, full_name):
-    u = await users.find_one({"_id": uid}) or {}
+    u = await users.find_one({"_id": uid}, {"balance": 1}) or {}
     mention = f"<a href='tg://user?id={uid}'>{esc(full_name or 'there')}</a>"
     balance = fmt_curr(u.get('balance', 0))
     text = (
-        f"✦ <b>{esc(BOT_TITLE)}</b>\n"
-        f"<i>Your digital services, in one place.</i>\n"
+        f"✦ <b>{esc(BOT_TITLE).upper()}</b>  <code> DIGITAL HUB</code>\n"
+        f"<i>One place. Your services. Your wallet.</i>\n"
         f"{SEP}\n"
-        f"Hey {mention}, welcome to your dashboard 👋\n\n"
-        f"💳 <b>YOUR WALLET</b>\n"
-        f"<blockquote><b>{balance}</b></blockquote>\n"
-        f"🛍 <b>Pick a service to get started</b>\n"
-        f"<i>Telegram accounts are listed at the current provider rate — no added markup.</i>\n"
-        f"\n<code>Simple • Clear pricing • Order history</code>"
+        f"Hey {mention} 👋 <b>ready to get started?</b>\n\n"
+        f"💳 <b>WALLET BALANCE</b>\n"
+        f"<blockquote>💰 <b>{balance}</b></blockquote>\n"
+        f"🛍 <b>EXPLORE SERVICES</b>\n"
+        f"<i>Telegram accounts at current provider rates — zero added markup.</i>\n"
+        f"\n<code>FAST ACCESS  •  CLEAR PRICING  •  ORDER TRACKING</code>"
     )
     rows = [
         [B("✈️  Telegram Accounts", "buy")],
@@ -73,7 +73,7 @@ async def back_main(cq: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "stats")
 async def profile(cq: CallbackQuery):
-    u = await users.find_one({"_id": cq.from_user.id}) or {}
+    u = await users.find_one({"_id": cq.from_user.id}, {"balance": 1}) or {}
     uname = f"@{esc(cq.from_user.username)}" if cq.from_user.username else "Not set"
     text = (
         f"👤 <b>MY PROFILE</b>\n{SEP}\n"
