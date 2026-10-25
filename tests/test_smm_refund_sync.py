@@ -84,7 +84,7 @@ def test_repeated_sync_does_not_issue_duplicate_refund(monkeypatch):
     refunds = []
     monkeypatch.setattr(flows, "smm_orders", collection)
     monkeypatch.setattr(flows, "qc", provider_refund)
-    monkeypatch.setattr(flows, "refund", lambda uid, amount: record(refunds, uid, amount))
+    monkeypatch.setattr(flows, "refund_once", lambda uid, amount, key: record_refund_once(refunds, uid, amount, key))
 
     first = run(flows.smm_sync_order(order))
     second = run(flows.smm_sync_order(first[0]))
