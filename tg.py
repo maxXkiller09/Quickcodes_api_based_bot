@@ -44,7 +44,7 @@ async def build_menu(page=0, query=None):
     rows = await s2_view()
     if rows is None:
         return ("❌ <b>Service is temporarily unavailable.</b>\n<i>Please try again later.</i>",
-                KB([B("Home", "back_main")]))
+                KB([B("🏠 Nexora Home", "back_main")]))
     if not rows:
         return "❌ <b>No countries available right now.</b>", KB([B("Home", "back_main")])
     if query:
@@ -76,7 +76,6 @@ async def build_menu(page=0, query=None):
     first = page * PER_PAGE + 1
     last = min((page + 1) * PER_PAGE, len(rows))
     text = (
-        f"💳 <b>Wallet:</b> {fmt_curr(0)}\\n"
         f"<b>{head}</b>\\n{LINE}\\n"
         f"🌍 <b>Choose a country</b>\\n"
         f"📄 Page <b>{page + 1}/{pages}</b> · Showing <b>{first}–{last}</b> of <b>{len(rows)}</b>\\n"
