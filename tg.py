@@ -32,7 +32,7 @@ from utils import B, KB, esc, fmt_curr, fmt_short, edit, is_spamming, chunk
 
 router = Router()
 TITLE = "🚀 Telegram Accounts"
-PER_PAGE, PER_ROW = 24, 2
+PER_PAGE, PER_ROW = 12, 2
 LINE = "━━━━━━━━━━━━━━━━━━━━━"
 
 
@@ -53,22 +53,37 @@ async def build_menu(page=0, query=None):
                 or q in flag_for(strip_flags(r["name"])) or q == r["country_code"].lower()]
         if not rows:
             return (f"❌ <b>No countries found for:</b> <code>{esc(query)}</code>",
-                    KB([B("Search", "s2:search")], [B("Back", "s2:page:0")]))
+                    KB([B("🔎 Search Country", "s2:search")], [B("🏠 Nexora Home", "back_main")]))
     pages = (len(rows) - 1) // PER_PAGE + 1
     page = max(0, min(page, pages - 1))
     btns = []
     for r in rows[page * PER_PAGE:(page + 1) * PER_PAGE]:
-        label = f"{'❌ ' if r['stock'] <= 0 else ''}{r['name']}|{fmt_short(r['my_price'])}"
-        btns.append(B(label[:64], f"s2:country:{r['country_code']}"))
+        stock_icon = "🟢" if r["stock"] > 0 else "🔴"
+        label = f"{stock_icon} {r['name']} · {fmt_short(r['my_price'])}"
+        btns.append(B(label[:60], f"s2:country:{r['country_code']}"))
     kb_rows = chunk(btns, PER_ROW)
     if pages > 1 and not query:
-        nums = [B(f"[{p + 1}]" if p == page else str(p + 1), f"s2:page:{p}") for p in range(pages)]
-        kb_rows += chunk(nums, 8)
-    kb_rows.append([B("Search", "s2:search")])
-    kb_rows.append([B("Home", "back_main")])
-    head = (f"<b>🔍 Search Results for:</b> <code>{esc(query)}</code>" if query else f"<b>{TITLE}</b>")
-    text = (f"{head}\n{LINE}\n<b>📄 Page:</b> {page + 1}/{pages}\n{LINE}\n"
-            f"<i>Select a country to purchase:</i>")
+        nav = []
+        if page > 0:
+            nav.append(B("⬅️ Previous", f"s2:page:{page - 1}"))
+        if page < pages - 1:
+            nav.append(B("Next ➡️", f"s2:page:{page + 1}"))
+        if nav:
+            kb_rows.append(nav)
+    kb_rows.append([B("🔎 Search Country", "s2:search")])
+    kb_rows.append([B("🏠 Nexora Home", "back_main")])
+    head = (f"🔎 <b>Search results</b> · <code>{esc(query)}</code>" if query else f"{TITLE}")
+    first = page * PER_PAGE + 1
+    last = min((page + 1) * PER_PAGE, len(rows))
+    text = (
+        f"💳 <b>Wallet:</b> {fmt_curr(0)}\\n"
+        f"<b>{head}</b>\\n{LINE}\\n"
+        f"🌍 <b>Choose a country</b>\\n"
+        f"📄 Page <b>{page + 1}/{pages}</b> · Showing <b>{first}–{last}</b> of <b>{len(rows)}</b>\\n"
+        f"{LINE}\\n"
+        f"<i>🟢 Available · 🔴 Out of stock</i>\\n"
+        f"<i>Select a country to view its price and continue.</i>"
+    )
     return text, KB(*kb_rows)
 
 
@@ -110,7 +125,7 @@ async def search_prompt(cq: CallbackQuery, state: FSMContext):
     await edit(cq, f"<b>🔍 Search Countries</b>\n{LINE}\n"
                    "<i>Send country code (e.g. <code>US</code>, <code>IN</code>) or country name/flag.</i>\n"
                    "<i>Example: <code>🇮🇳</code> or <code>India</code> or <code>IN</code></i>",
-               KB([B("Back", "s2:page:0")]))
+               KB([B("⬅️ Back to Countries", "s2:page:0")]))
     await state.set_state(TGState.waiting_search)
 
 
