@@ -20,6 +20,7 @@
 
 
 """All money-moving logic (no Telegram code here, so it can be tested on its own)."""
+import asyncio
 import time
 from db import (orders, tasks, smm_orders, users, profit_pct, charge, refund, refund_once, get_balance, utcnow)
 from qc import qc, explain, BUSY_USER
@@ -490,3 +491,34 @@ async def admin_debit(uid, amount):
         return False
     r = await users.update_one({"_id": uid}, [{"$set": {"balance": {"$max": [0, {"$subtract": ["$balance", amount]}]}}}])
     return r.matched_count == 1 if hasattr(r, "matched_count") else r.modified_count == 1
+
+
+# Prevent duplicate provider requests when several users open the same menu at once.
+# Locks are keyed per catalog/query so unrelated catalogs can still load concurrently.
+_catalog_locks = {}
+
+
+def _singleflight(key_builder):
+    def decorate(func):
+        async def wrapped(*args, **kwargs):
+            key = (func.__name__, key_builder(*args, **kwargs))
+            lock = _catalog_locks.get(key)
+            if lock is None:
+                lock = asyncio.Lock()
+                _catalog_locks[key] = lock
+            async with lock:
+                # Re-check happens inside the original function after waiting;
+                # a prior caller may already have populated the cache.
+                return await func(*args, **kwargs)
+        wrapped.__name__ = func.__name__
+        wrapped.__doc__ = func.__doc__
+        return wrapped
+    return decorate
+
+
+# Keep these wrappers at module end so internal calls also use single-flight.
+s2_rows = _singleflight(lambda *a, **k: "all")(s2_rows)
+s3_catalog = _singleflight(lambda *a, **k: "all")(s3_catalog)
+s3_countries = _singleflight(lambda sid, full=False, force=False: (str(sid), bool(full), bool(force)))(s3_countries)
+s3_offers = _singleflight(lambda sid, cid, force=False: (str(sid), str(cid), bool(force)))(s3_offers)
+smm_catalog = _singleflight(lambda *a, **k: "all")(smm_catalog)
