@@ -72,16 +72,18 @@ async def back_main(cq: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "stats")
 async def profile(cq: CallbackQuery):
     u = await users.find_one({"_id": cq.from_user.id}) or {}
-    uname = f"@{esc(cq.from_user.username)}" if cq.from_user.username else "N/A"
+    uname = f"@{esc(cq.from_user.username)}" if cq.from_user.username else "Not set"
     text = (
-        "<b>◍ your profile</b>\n"
-        f"{SEP}\n"
-        f"<blockquote><b>💳 Name:</b> {esc(cq.from_user.full_name or 'User')}</blockquote>\n"
-        f"<blockquote><b>🔗 Username:</b> {uname}</blockquote>\n"
-        f"<blockquote><b>🆔 User ID:</b> <code>{cq.from_user.id}</code></blockquote>\n"
-        f"<blockquote><b>💰 Balance:</b> {fmt_curr(u.get('balance', 0))}</blockquote>\n"
+        f"👤 <b>MY PROFILE</b>\n{SEP}\n"
+        f"<blockquote>🧑 <b>Name</b>\n{esc(cq.from_user.full_name or 'User')}</blockquote>\n"
+        f"<blockquote>🔗 <b>Username</b>\n{uname}</blockquote>\n"
+        f"<blockquote>🆔 <b>User ID</b>\n<code>{cq.from_user.id}</code></blockquote>\n"
+        f"<blockquote>💳 <b>Wallet balance</b>\n<b>{fmt_curr(u.get('balance', 0))}</b></blockquote>\n"
+        "<i>View your recent orders or return to the main menu.</i>"
     )
-    await edit(cq, text, KB([B("History", "history")], [B("Back", "back_main")]))
+    await edit(cq, text, KB([B("📜 Order History", "history")],
+                            [B("➕ Recharge Wallet", "recharge")],
+                            [B("🏠 Main Menu", "back_main")]))
     await cq.answer()
 
 
@@ -89,7 +91,9 @@ async def profile(cq: CallbackQuery):
 async def history(cq: CallbackQuery):
     rows = await orders.find({"user_id": cq.from_user.id}).sort("date", -1).limit(15).to_list(15)
     if not rows:
-        return await cq.answer("❌ No orders found yet.", show_alert=True)
+        await edit(cq, f"📜 <b>ORDER HISTORY</b>\n{SEP}\n\nYou haven't placed an order yet.\n\n<i>Choose a service from the main menu to get started.</i>",
+                   KB([B("🛍 Browse Services", "back_main")], [B("👤 My Profile", "stats")]))
+        return await cq.answer()
     icon = {"tg": "✈️", "wa": "💬", "otp": "📲", "smm": "🌍"}
     lines = []
     for o in rows:
@@ -97,6 +101,6 @@ async def history(cq: CallbackQuery):
         extra = f" · <code>{esc(o['number'])}</code>" if o.get("number") else ""
         lines.append(f"{icon.get(o.get('type'), '🧾')} <b>{esc(o.get('title', 'Order'))}</b>{extra}\n"
                      f"     {fmt_curr(o.get('price', 0))} · {d.strftime('%d %b %H:%M') if d else ''}")
-    await edit(cq, f"📜 <b>Your last {len(rows)} orders</b>\n{SEP}\n" + "\n".join(lines),
-               KB([B("Back", "stats")]))
+    await edit(cq, f"📜 <b>ORDER HISTORY</b>\n{SEP}\n<i>Showing your latest {len(rows)} orders</i>\n\n" + "\n\n".join(lines),
+               KB([B("👤 My Profile", "stats")], [B("🏠 Main Menu", "back_main")]))
     await cq.answer()
