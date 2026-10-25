@@ -29,13 +29,41 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, CallbackQuery
 from config import ADMIN_IDS, BOT_TITLE
-from db import get_settings, set_setting, users
+from db import get_settings, set_setting, users, _client
 from flows import admin_credit, admin_debit
 from qc import qc
 from utils import B, KB, esc, fmt_curr, edit, SEP
 
 router = Router()
+
 IS_ADMIN = F.from_user.id.in_(ADMIN_IDS)
+
+
+async def health_snapshot():
+    """Return a safe owner health summary without exposing credentials or calling providers."""
+    lines = ["🩺 <b>NEXORA · HEALTH</b>", SEP]
+    try:
+        await _client.admin.command("ping")
+        lines.append("• MongoDB: 🟢 reachable")
+    except Exception:
+        lines.append("• MongoDB: 🔴 unreachable")
+
+    try:
+        settings = await get_settings()
+        api_keys = settings.get("api_keys") or {}
+        for key, label in (("s2", "Server 2 API key"), ("s3", "Server 3 API key"), ("smm", "SMM API key")):
+            configured = bool(str(api_keys.get(key) or "").strip())
+            lines.append(f"• {label}: {'🟢 configured' if configured else '🟡 missing'} (not live-tested)")
+        utr_ready = bool(settings.get("UTR_API_MAIL") and settings.get("UTR_API_PASS"))
+        lines.append(f"• UTR verification credentials: {'🟢 configured' if utr_ready else '🟡 missing'}")
+        manual_ready = bool(settings.get("MANUAL_UPI_ID") or settings.get("MANUAL_QR_FILE_ID"))
+        lines.append(f"• Manual UPI details: {'🟢 configured' if manual_ready else '🟡 missing'}")
+    except Exception:
+        lines.append("• Settings read: 🔴 failed")
+
+    lines.append("")
+    lines.append("<i>Configuration checks only; provider APIs and live payments are not called.</i>")
+    return "\n".join(lines)
 
 SERVICES = [("tg", "Telegram Accounts"), ("wa", "WhatsApp Accounts"), ("otp", "All Apps OTP"), ("smm", "SMM Panel")]
 APIS = [("s2", "Server 2", "Telegram accounts"), ("s3", "Server 3", "OTP + WhatsApp"), ("smm", "SMM Panel", "social media")]
@@ -82,6 +110,11 @@ async def home(target):
             [B("🔑 API Connections", "adm:api"), B("💰 API Balances", "adm:bal")],
             [B("💳 Wallet Payments", "adm:pay")])
     await edit(target, text, kb)
+
+
+@router.message(Command("health"), IS_ADMIN)
+async def health_cmd(msg: Message):
+    await msg.answer(await health_snapshot(), parse_mode="HTML")
 
 
 @router.message(Command("admin"), IS_ADMIN)
