@@ -16,6 +16,20 @@ def run(coro):
     return asyncio.run(coro)
 
 
+def matches(row, query):
+    """Small Mongo-like matcher for the operators used by these tests."""
+    for key, expected in query.items():
+        if key == "$or":
+            if not any(matches(row, branch) for branch in expected):
+                return False
+        elif isinstance(expected, dict) and "$in" in expected:
+            if row.get(key) not in expected["$in"]:
+                return False
+        elif row.get(key) != expected:
+            return False
+    return True
+
+
 class FakeTxns:
     def __init__(self, rows=()):
         self.rows = [dict(row) for row in rows]
@@ -23,12 +37,7 @@ class FakeTxns:
 
     async def find_one(self, query):
         for row in self.rows:
-            if all(row.get(k) == v for k, v in query.items() if k != "$or"):
-                if "$or" in query and not any(
-                    all(row.get(k) == v for k, v in branch.items())
-                    for branch in query["$or"]
-                ):
-                    continue
+            if matches(row, query):
                 return dict(row)
         return None
 
@@ -41,7 +50,7 @@ class FakeTxns:
 
     async def update_one(self, query, update):
         for row in self.rows:
-            if all(row.get(k) == v for k, v in query.items()):
+            if matches(row, query):
                 row.update(update["$set"])
                 break
 
@@ -78,17 +87,21 @@ def setup(monkeypatch, rows=(), credit_result="applied"):
     claims = FakeClaims()
     users = FakeUsers()
     keys = []
+
     async def id_in_use(ids):
         return any(i in claims.claims for i in ids)
+
     async def claim_ids(ids, meta):
         if any(i in claims.claims for i in ids):
             return False
         for i in dict.fromkeys(ids):
             claims.claims[i] = {"_id": i, **meta}
         return True
+
     async def credit_once(uid, amount, key):
         keys.append((uid, amount, key))
         return credit_result
+
     monkeypatch.setattr(payments, "txns", txns)
     monkeypatch.setattr(payments, "used_utrs", claims)
     monkeypatch.setattr(payments, "users", users)
