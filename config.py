@@ -38,5 +38,5 @@ DATABASE_URL = _need("DATABASE_URL")                       # your own MongoDB fo
 DB_NAME = os.getenv("DB_NAME", "reseller_bot")
 QC_API_BASE = _need("QC_API_BASE").rstrip("/")             # Quick Codes API address, e.g. https://api.example.com
 
-BOT_TITLE = os.getenv("BOT_TITLE", "MULTI SERVICE BOT")   # name shown on the home screen
+BOT_TITLE = os.getenv("BOT_TITLE", "Nexora")   # name shown on the home screen
 SUPPORT_LINK = os.getenv("SUPPORT_LINK", "").strip()      # optional "Contact Support" button on payment problems
