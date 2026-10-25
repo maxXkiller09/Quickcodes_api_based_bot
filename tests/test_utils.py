@@ -68,3 +68,59 @@ def test_spam_guard_uses_per_user_and_key_cooldowns(monkeypatch):
     clock["now"] += 3.1
     assert utils.is_spamming(1, "home", cooldown=3) is False
     utils._last.clear()
+
+def test_edit_uses_existing_message_when_edit_succeeds():
+    import asyncio
+
+    class FakeMessage:
+        def __init__(self):
+            self.edited = None
+            self.deleted = False
+            self.answered = None
+
+        async def edit_text(self, text, **kwargs):
+            self.edited = (text, kwargs)
+            return "edited"
+
+        async def delete(self):
+            self.deleted = True
+
+        async def answer(self, text, **kwargs):
+            self.answered = (text, kwargs)
+            return "answered"
+
+    msg = FakeMessage()
+    result = asyncio.run(utils.edit(msg, "Hello", markup="keyboard"))
+    assert result == "edited"
+    assert msg.edited[0] == "Hello"
+    assert msg.edited[1]["reply_markup"] == "keyboard"
+    assert msg.deleted is False
+    assert msg.answered is None
+
+
+def test_edit_falls_back_to_answer_when_edit_fails():
+    import asyncio
+
+    class FakeMessage:
+        def __init__(self):
+            self.deleted = False
+            self.answered = None
+
+        async def edit_text(self, text, **kwargs):
+            raise RuntimeError("can't edit this message")
+
+        async def delete(self):
+            self.deleted = True
+            raise RuntimeError("can't delete this message")
+
+        async def answer(self, text, **kwargs):
+            self.answered = (text, kwargs)
+            return "answered"
+
+    msg = FakeMessage()
+    result = asyncio.run(utils.edit(msg, "Fallback"))
+    assert result == "answered"
+    assert msg.deleted is True
+    assert msg.answered[0] == "Fallback"
+    assert msg.answered[1]["parse_mode"] == "HTML"
+
