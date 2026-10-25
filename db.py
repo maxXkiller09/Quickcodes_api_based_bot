@@ -118,9 +118,44 @@ async def charge(uid, amount):
 async def refund(uid, amount):
     amount = round(float(amount), 2)
     try:
-        await users.update_one({"_id": uid}, {"$inc": {"balance": amount}})
-        return True
+        result = await users.update_one({"_id": uid}, {"$inc": {"balance": amount}})
+        return getattr(result, "matched_count", 1) == 1
     except Exception:
         print(f"[wallet] !!! REFUND FAILED user={uid} amount={amount}")
         await notify.alert_admins(f"🚨 <b>REFUND FAILED</b> user <code>{uid}</code> amount ₹{amount:g} - credit manually with /credit")
         return False
+
+
+async def refund_once(uid, amount, refund_id):
+    """Apply a refund at most once, atomically with its idempotency key on the user document.
+
+    Returns 'applied', 'already_applied', or 'failed'. The key is persisted with the
+    balance increment, so a retry after a crash cannot credit the wallet twice.
+    """
+    amount = round(float(amount), 2)
+    if amount <= 0 or not refund_id:
+        return "failed"
+    try:
+        result = await users.update_one(
+            {"_id": uid, "refund_keys": {"$ne": str(refund_id)}},
+            {"$inc": {"balance": amount}, "$addToSet": {"refund_keys": str(refund_id)}},
+        )
+        if getattr(result, "modified_count", 0) == 1:
+            return "applied"
+
+        user = await users.find_one({"_id": uid}, {"refund_keys": 1})
+        if user and str(refund_id) in (user.get("refund_keys") or []):
+            return "already_applied"
+        print(f"[wallet] !!! REFUND FAILED user={uid} amount={amount} key={refund_id}")
+        await notify.alert_admins(
+            f"🚨 <b>REFUND FAILED</b> user <code>{uid}</code> amount ₹{amount:g} "
+            f"(refund key <code>{refund_id}</code>) - investigate before manual credit"
+        )
+        return "failed"
+    except Exception:
+        print(f"[wallet] !!! REFUND FAILED user={uid} amount={amount} key={refund_id}")
+        await notify.alert_admins(
+            f"🚨 <b>REFUND FAILED</b> user <code>{uid}</code> amount ₹{amount:g} "
+            f"(refund key <code>{refund_id}</code>) - investigate before manual credit"
+        )
+        return "failed"

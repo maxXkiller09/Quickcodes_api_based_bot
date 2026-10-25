@@ -21,7 +21,7 @@
 
 """All money-moving logic (no Telegram code here, so it can be tested on its own)."""
 import time
-from db import (orders, tasks, smm_orders, users, profit_pct, charge, refund, get_balance, utcnow)
+from db import (orders, tasks, smm_orders, users, profit_pct, charge, refund, refund_once, get_balance, utcnow)
 from qc import qc, explain, BUSY_USER
 import notify
 
@@ -437,11 +437,24 @@ async def smm_sync_order(o):
         api_charge = float(d.get("charge") or o.get("api_charge") or 0)
         ratio = (o["cost"] / api_charge) if api_charge else 1.0
         amt = round(min(api_ref * ratio, o["cost"]), 2)
-        r = await smm_orders.update_one({"_id": o["_id"], "refunded": {"$ne": True}},
-                                        {"$set": {"refunded": True, "refund_amount": amt}})
-        if r.modified_count and amt > 0:
-            await refund(o["user_id"], amt)
-            got = amt
+        # Credit the wallet first using a durable idempotency key. If the wallet
+        # update fails, leave the order pending so a later sync can retry safely.
+        if amt > 0:
+            refund_key = f"smm:{o['_id']}:provider-refund"
+            refund_result = await refund_once(o["user_id"], amt, refund_key)
+            if refund_result not in ("applied", "already_applied"):
+                return (await smm_orders.find_one({"_id": o["_id"]})) or o, 0.0
+            r = await smm_orders.update_one(
+                {"_id": o["_id"], "refunded": {"$ne": True}},
+                {"$set": {"refunded": True, "refund_amount": amt}},
+            )
+            if r.modified_count and refund_result == "applied":
+                got = amt
+        else:
+            await smm_orders.update_one(
+                {"_id": o["_id"], "refunded": {"$ne": True}},
+                {"$set": {"refunded": True, "refund_amount": 0.0}},
+            )
     return (await smm_orders.find_one({"_id": o["_id"]})) or o, got
 
 
