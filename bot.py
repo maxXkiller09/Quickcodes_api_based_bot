@@ -24,6 +24,8 @@ os.environ["SSL_CERT_FILE"] = certifi.where()
 os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
 import asyncio
 import logging
+import re
+from html import escape
 from aiogram import Bot, Dispatcher, BaseMiddleware
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -36,6 +38,70 @@ import notify
 import admin, recharge, fampay, tg, otp, smm, home, sandbox
 
 logging.basicConfig(level=logging.INFO)
+
+
+async def _log_activity(kind, user, chat, detail):
+    """Send a compact activity event to the configured private log group."""
+    try:
+        safe_detail = escape(str(detail or "")[:240])
+        await fampay.send_log(
+            f"🧾 <b>BOT ACTIVITY · {escape(kind)}</b>\\n"
+            f"👤 {escape(user.full_name or 'Unknown')} "
+            f"(@{escape(user.username)} if user.username else '')"
+        )
+    except Exception:
+        # Activity logging must never interrupt normal bot actions.
+        pass
+
+
+class ActivityMiddleware(BaseMiddleware):
+    """Log incoming messages and button actions, while masking likely secrets."""
+    async def __call__(self, handler, event, data):
+        user = getattr(event, "from_user", None)
+        if user and not getattr(user, "is_bot", False):
+            try:
+                chat = getattr(event, "chat", None) or getattr(getattr(event, "message", None), "chat", None)
+                chat_id = getattr(chat, "id", "unknown")
+                if hasattr(event, "data") and event.data is not None:
+                    detail = f"Button: {event.data}"
+                    kind = "BUTTON"
+                else:
+                    raw = getattr(event, "text", None) or ""
+                    state_obj = data.get("state")
+                    state_name = ""
+                    if state_obj:
+                        try:
+                            state_name = str(await state_obj.get_state() or "").lower()
+                        except Exception:
+                            pass
+                    sensitive_state = any(x in state_name for x in ("utr", "pass", "otp", "code", "secret", "token", "payment", "screenshot"))
+                    if sensitive_state:
+                        detail = f"Sensitive input hidden (state={state_name or 'unknown'})"
+                    elif raw:
+                        # Never forward long numeric strings or obvious credential/payment payloads.
+                        if re.search(r"(?i)(password|app.?pass|api.?key|token|utr|otp|verification code)", raw) or re.search(r"\\b\\d{6,}\\b", raw):
+                            detail = "Message content hidden (possible secret/code)"
+                        else:
+                            detail = raw[:180]
+                    elif getattr(event, "photo", None):
+                        detail = "Photo/media received (contents not copied)"
+                    elif getattr(event, "document", None):
+                        detail = "Document received (contents not copied)"
+                    else:
+                        detail = f"Update type: {type(event).__name__}"
+                    kind = "MESSAGE"
+                await fampay.send_log(
+                    f"🧾 <b>BOT ACTIVITY · {kind}</b>\\n"
+                    f"👤 {escape(user.full_name or 'Unknown')} "
+                    f"{('@' + escape(user.username)) if user.username else ''} "
+                    f"(<code>{user.id}</code>)\\n"
+                    f"💬 Chat: <code>{chat_id}</code>\\n"
+                    f"📌 {escape(detail)}"
+                )
+            except Exception:
+                # Logging failures must never break user-facing bot handlers.
+                pass
+        return await handler(event, data)
 
 
 class UserMiddleware(BaseMiddleware):
@@ -75,6 +141,8 @@ class UserMiddleware(BaseMiddleware):
 async def main():
     bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher(storage=MemoryStorage())
+    dp.message.outer_middleware(ActivityMiddleware())
+    dp.callback_query.outer_middleware(ActivityMiddleware())
     dp.message.outer_middleware(UserMiddleware())
     dp.callback_query.outer_middleware(UserMiddleware())
 
