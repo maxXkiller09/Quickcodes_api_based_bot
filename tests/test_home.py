@@ -22,6 +22,8 @@ def test_home_view_escapes_user_name_and_renders_core_navigation(monkeypatch):
 
     assert "&lt;Sam &amp; Co&gt;" in text
     assert "₹12.50" in text
+    assert "current provider rate" in text
+    assert "no added markup" in text
     callbacks = {
         button.callback_data
         for row in keyboard.inline_keyboard
@@ -41,6 +43,7 @@ def test_home_view_handles_missing_wallet_document(monkeypatch):
     assert "₹0.00" in text
     assert "New User" in text
     assert keyboard.inline_keyboard
+
 
 def test_profile_handler_escapes_profile_fields_and_shows_navigation(monkeypatch):
     class User:
@@ -132,4 +135,3 @@ def test_history_empty_state_offers_browse_and_profile(monkeypatch):
     }
     assert {"back_main", "stats"} <= callbacks
     assert cq.answered is True
-

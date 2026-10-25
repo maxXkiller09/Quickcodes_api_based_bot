@@ -19,7 +19,6 @@
 # ============================================================================
 
 
-
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -36,23 +35,24 @@ async def home_view(uid, full_name):
     mention = f"<a href='tg://user?id={uid}'>{esc(full_name or 'there')}</a>"
     balance = fmt_curr(u.get('balance', 0))
     text = (
-        f"✨ <b>{esc(BOT_TITLE)}</b>\n"
-        f"<i>Your all-in-one digital services hub</i>\n"
+        f"✦ <b>{esc(BOT_TITLE)}</b>\n"
+        f"<i>Your digital services, in one place.</i>\n"
         f"{SEP}\n"
-        f"👋 Welcome back, {mention}!\n\n"
-        f"💳 <b>Wallet balance</b>\n"
+        f"Hey {mention}, welcome back 👋\n\n"
+        f"💳 <b>YOUR WALLET</b>\n"
         f"<blockquote><b>{balance}</b></blockquote>\n"
-        f"👇 <b>Choose a service</b>\n"
-        f"<i>Fast access • Simple steps • Order history</i>"
+        f"🛍 <b>What would you like to do?</b>\n"
+        f"<i>Telegram accounts are listed at the current provider rate — no added markup.</i>\n"
+        f"\n<code>Simple • Secure • Easy to track</code>"
     )
     kb = KB(
         [B("✈️  Telegram Accounts", "buy")],
-        [B("💬  WhatsApp Accounts", "wp_terms")],
-        [B("📲  All Apps OTP", "s3_user_root")],
+        [B("💬  WhatsApp Accounts", "wp_terms"), B("📲  Apps OTP", "s3_user_root")],
         [B("📈  Social Media Services", "feature_smm_external")],
-        [B("➕ Recharge Wallet", "recharge"), B("👤 My Profile", "stats")],
+        [B("➕ Add Funds", "recharge"), B("👤 My Profile", "stats")],
     )
     return text, kb
+
 
 @router.message(Command("start"))
 async def start(msg: Message, state: FSMContext):
@@ -82,7 +82,7 @@ async def profile(cq: CallbackQuery):
         "<i>View your recent orders or return to the main menu.</i>"
     )
     await edit(cq, text, KB([B("📜 Order History", "history")],
-                            [B("➕ Recharge Wallet", "recharge")],
+                            [B("➕ Add Funds", "recharge")],
                             [B("🏠 Main Menu", "back_main")]))
     await cq.answer()
 
@@ -91,7 +91,7 @@ async def profile(cq: CallbackQuery):
 async def history(cq: CallbackQuery):
     rows = await orders.find({"user_id": cq.from_user.id}).sort("date", -1).limit(15).to_list(15)
     if not rows:
-        await edit(cq, f"📜 <b>ORDER HISTORY</b>\n{SEP}\n\nYou haven't placed an order yet.\n\n<i>Choose a service from the main menu to get started.</i>",
+        await edit(cq, f"📜 <b>ORDER HISTORY</b>\n{SEP}\n\nYou haven't placed an order yet.\n\n<i>Browse services to place your first order.</i>",
                    KB([B("🛍 Browse Services", "back_main")], [B("👤 My Profile", "stats")]))
         return await cq.answer()
     icon = {"tg": "✈️", "wa": "💬", "otp": "📲", "smm": "🌍"}
@@ -101,6 +101,6 @@ async def history(cq: CallbackQuery):
         extra = f" · <code>{esc(o['number'])}</code>" if o.get("number") else ""
         lines.append(f"{icon.get(o.get('type'), '🧾')} <b>{esc(o.get('title', 'Order'))}</b>{extra}\n"
                      f"     {fmt_curr(o.get('price', 0))} · {d.strftime('%d %b %H:%M') if d else ''}")
-    await edit(cq, f"📜 <b>ORDER HISTORY</b>\n{SEP}\n<i>Showing your latest {len(rows)} orders</i>\n\n" + "\n\n".join(lines),
+    await edit(cq, f"📜 <b>ORDER HISTORY</b>\n{SEP}\n<i>Latest {len(rows)} orders</i>\n\n" + "\n\n".join(lines),
                KB([B("👤 My Profile", "stats")], [B("🏠 Main Menu", "back_main")]))
     await cq.answer()

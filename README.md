@@ -1,24 +1,44 @@
-# Reseller Bot (runs on the Quick Codes API)
+# Nexora · Quick Codes Telegram Bot
 
-Services: Buy Telegram account (Server 2) · All apps OTP / VTH panel (Server 3) · WhatsApp account (Server 3, WhatsApp only) · Social media services (SMM).
-Users, wallet, recharge and history live in THIS bot's own MongoDB. Every purchase is paid from YOUR Quick Codes wallet through the API.
+A Telegram storefront for digital services powered by the Quick Codes API. The bot has its own MongoDB-backed user wallets, recharge flow, purchase history, and owner controls.
 
-## Setup (10 minutes)
-1. Create a bot with @BotFather, copy the token.
-2. Create a free MongoDB (Atlas) for this bot, copy its connection string.
-3. Copy `.env.example` to `.env` and fill it (BOT_TOKEN, ADMIN_IDS, DATABASE_URL, QC_API_BASE).
-4. `pip install -r requirements.txt`
-5. `python bot.py`
-6. In Telegram open your bot and send `/admin`:
-   - **🔑 API Keys** - paste your 3 keys from the Quick Codes bot (🔑 API Keys button). The key is checked and your message deleted.
-   - **📈 Profit %** - set your profit for Server 2, Server 3 (OTP + WhatsApp) and SMM. Your price = Quick Codes price + that %.
-   - **💳 Payments** - Auto UPI ID, UTR API URL / mail / app password, Manual UPI ID, Manual QR. Turn Auto / Manual ON.
-   - **🛎 Services ON/OFF** - switch any service for your users.
-   - **💰 Live Balances** - shows your Quick Codes wallet. Keep it recharged (in the Quick Codes bot).
-7. Admin commands: `/admin` · `/credit user_id amount` · `/debit user_id amount`
+## What it offers
 
-## Important
-- **Raise the API limit.** Quick Codes allows 60 requests/min per key by default. In the Quick Codes bot send `/apilimit 600` so many users can wait for OTPs at once.
-- If your Quick Codes wallet runs out, users see "temporarily unavailable" (never charged) and you get an alert.
-- Failed / timed-out / cancelled orders are refunded to the user's wallet automatically. SMM cancelled or partial orders too (the refund keeps your profit % in proportion).
-- Do not share your API keys or `.env`.
+- ✈️ **Telegram accounts (Server 2):** displayed at the current provider rate, with **no additional reseller markup**.
+- 💬 **WhatsApp accounts** and 📲 **apps OTP** through Server 3.
+- 📈 **Social media services (SMM)** through the configured provider.
+- 💳 Wallet recharge, order history, service toggles, API-key setup, balance checks, and owner-only health checks.
+- 🛡️ Retry-safe refund handling for the covered cancellation/payment flows.
+
+> **Product scope:** this repository currently sells provider-supplied Telegram accounts/activations. It is not yet a separate Telegram username/ID marketplace, and it does not compare multiple sellers. “No added markup” means provider-rate pricing from the configured Quick Codes API, not a guarantee that it is the cheapest rate across the internet.
+
+## Setup
+
+1. Create a Telegram bot with [@BotFather](https://t.me/BotFather) and copy its token.
+2. Create a MongoDB database (MongoDB Atlas works).
+3. Copy `.env.example` to `.env` and set `BOT_TOKEN`, `ADMIN_IDS`, `DATABASE_URL`, and `QC_API_BASE`.
+4. Install dependencies: `pip install -r requirements.txt`.
+5. Run locally: `python bot.py`.
+6. Open the bot in Telegram and send `/admin` as an owner.
+
+## Owner setup
+
+- **API keys:** configure the Server 2, Server 3, and SMM keys using the Quick Codes API keys supplied for your account.
+- **Pricing:** configure supported markup for Server 3 and SMM. Telegram account pricing stays at the provider rate with no added markup.
+- **Payments:** configure Auto UPI / UTR verification and/or manual UPI / QR, then enable the payment methods you intend to use.
+- **Services:** switch supported services on or off for users.
+- **API balance:** monitor and recharge the Quick Codes wallet in the Quick Codes bot.
+- **Health:** `/health` reports local database/configuration checks; it does not perform live payment verification or prove provider API availability.
+
+Admin commands include `/admin`, `/health`, `/credit user_id amount`, and `/debit user_id amount`.
+
+## Deployment
+
+The bot uses Telegram polling, so deploy it on Render as a **Background Worker**, not a web service. Set required environment variables in Render's Environment section; never commit `.env` or paste credentials into chats. Review startup logs after deploying.
+
+## Operational notes
+
+- Quick Codes API limits may apply; configure an appropriate limit in the Quick Codes bot for your expected traffic.
+- If provider balance or service availability is insufficient, purchases may be unavailable.
+- Refund retry safety exists for specific flows; it should not be interpreted as proof that every external payment/provider scenario has been tested live.
+- Keep API keys, bot tokens, database URLs, and payment credentials private.
