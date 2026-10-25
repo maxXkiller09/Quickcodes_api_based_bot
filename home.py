@@ -33,23 +33,26 @@ router = Router()
 
 async def home_view(uid, full_name):
     u = await users.find_one({"_id": uid}) or {}
-    mention = f"<a href='tg://user?id={uid}'>{esc(full_name)}</a>"
+    mention = f"<a href='tg://user?id={uid}'>{esc(full_name or 'there')}</a>"
+    balance = fmt_curr(u.get('balance', 0))
     text = (
-        f"🤖 <b>{esc(BOT_TITLE)}</b>\n"
-        f"<blockquote>🤩 <b>Welcome:</b> {mention} to the Best Multi Service Panel Bot</blockquote>\n"
-        f"<blockquote>👤 <b><i>Select a service below to get started.</i></b></blockquote>\n"
+        f"✨ <b>{esc(BOT_TITLE)}</b>\n"
+        f"<i>Your all-in-one digital services hub</i>\n"
         f"{SEP}\n"
-        f"💸 <b>Your Balance:</b> {fmt_curr(u.get('balance', 0))}\n"
+        f"👋 Welcome back, {mention}!\n\n"
+        f"💳 <b>Wallet balance</b>\n"
+        f"<blockquote><b>{balance}</b></blockquote>\n"
+        f"👇 <b>Choose a service</b>\n"
+        f"<i>Fast access • Simple steps • Order history</i>"
     )
     kb = KB(
-        [B("Buy telegram Account", "buy")],
-        [B("Buy WhatsApp Account", "wp_terms")],
-        [B("All apps otp", "s3_user_root")],
-        [B("Social media services", "feature_smm_external")],
-        [B("Recharge", "recharge"), B("My Profile", "stats")],
+        [B("✈️  Telegram Accounts", "buy")],
+        [B("💬  WhatsApp Accounts", "wp_terms")],
+        [B("📲  All Apps OTP", "s3_user_root")],
+        [B("📈  Social Media Services", "feature_smm_external")],
+        [B("➕ Recharge Wallet", "recharge"), B("👤 My Profile", "stats")],
     )
     return text, kb
-
 
 @router.message(Command("start"))
 async def start(msg: Message, state: FSMContext):
