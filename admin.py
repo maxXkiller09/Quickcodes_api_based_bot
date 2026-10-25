@@ -72,20 +72,29 @@ async def _del(msg):
 
 # ============================== home ==============================
 async def home(target):
-    text = f"⚙️ <b>ADMIN PANEL</b>\n{SEP}\n<i>{esc(BOT_TITLE)}</i>"
-    kb = KB([B("🛎 Services ON/OFF", "adm:svc"), B("📈 Profit %", "adm:profit")],
-            [B("🔑 API Keys", "adm:api"), B("💰 Live Balances", "adm:bal")],
-            [B("💳 Payments", "adm:pay")])
+    text = (
+        f"🛠 <b>NEXORA · ADMIN</b>\n{SEP}\n"
+        f"<i>{esc(BOT_TITLE)} control centre</i>\n\n"
+        "Choose a section below. Changes apply to the live bot.\n"
+        "🔌 Services · pricing · API connections · wallet payments"
+    )
+    kb = KB([B("🔌 Services", "adm:svc"), B("📊 Pricing", "adm:profit")],
+            [B("🔑 API Connections", "adm:api"), B("💰 API Balances", "adm:bal")],
+            [B("💳 Wallet Payments", "adm:pay")])
     await edit(target, text, kb)
 
 
 @router.message(Command("admin"), IS_ADMIN)
 async def admin_cmd(msg: Message, state: FSMContext):
     await state.clear()
-    await msg.answer(f"⚙️ <b>ADMIN PANEL</b>\n{SEP}\n<i>{esc(BOT_TITLE)}</i>", parse_mode="HTML",
-                     reply_markup=KB([B("🛎 Services ON/OFF", "adm:svc"), B("📈 Profit %", "adm:profit")],
-                                     [B("🔑 API Keys", "adm:api"), B("💰 Live Balances", "adm:bal")],
-                                     [B("💳 Payments", "adm:pay")]))
+    await msg.answer(
+        f"🛠 <b>NEXORA · ADMIN</b>\n{SEP}\n<i>{esc(BOT_TITLE)} control centre</i>\n\n"
+        "Choose a section below. Changes apply to the live bot.\n"
+        "🔌 Services · pricing · API connections · wallet payments",
+        parse_mode="HTML",
+        reply_markup=KB([B("🔌 Services", "adm:svc"), B("📊 Pricing", "adm:profit")],
+                        [B("🔑 API Connections", "adm:api"), B("💰 API Balances", "adm:bal")],
+                        [B("💳 Wallet Payments", "adm:pay")]))
 
 
 @router.callback_query(F.data == "adm:home", IS_ADMIN)
@@ -99,7 +108,7 @@ async def home_cb(cq: CallbackQuery, state: FSMContext):
 async def render_services(cq):
     s = await get_settings()
     rows = [[B(f"{'✅' if s['services'].get(k, True) else '❌'} {n}", f"adm:tog:{k}")] for k, n in SERVICES]
-    rows.append([B("⬅️ Back", "adm:home")])
+    rows.append([B("🏠 Admin Home", "adm:home")])
     await edit(cq, f"🛎 <b>Services</b>\n{SEP}\n<i>Tap to switch a service ON / OFF for your users.</i>", KB(*rows))
 
 
@@ -192,7 +201,7 @@ async def key_prompt(cq: CallbackQuery, state: FSMContext):
     await state.update_data(srv=k)
     n = next(a[1] for a in APIS if a[0] == k)
     await edit(cq, f"✏️ <b>Send your {n} API key</b>\nIt starts with <code>qc_{k}_</code>.\n"
-                   "<i>Your message will be deleted right after for safety.</i>", KB([B("⬅️ Back", "adm:api")]))
+                   "<i>Your message will be deleted right after for safety.</i>", KB([B("⬅️ API Connections", "adm:api")]))
 
 
 @router.message(StateFilter(Adm.key), IS_ADMIN, F.text, ~F.text.startswith("/"))
@@ -278,7 +287,7 @@ async def field_prompt(cq: CallbackQuery, state: FSMContext):
     await cq.answer()
     await state.set_state(Adm.value)
     await state.update_data(field=f)
-    await edit(cq, f"✏️ <b>{PAY_FIELDS[f][0]}</b>\n{PAY_FIELDS[f][1]}", KB([B("⬅️ Back", "adm:pay")]))
+    await edit(cq, f"✏️ <b>{PAY_FIELDS[f][0]}</b>\n{PAY_FIELDS[f][1]}", KB([B("⬅️ Wallet Payments", "adm:pay")]))
 
 
 @router.message(StateFilter(Adm.value), IS_ADMIN, F.photo)
