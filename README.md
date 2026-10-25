@@ -45,7 +45,7 @@ Admin commands include `/admin`, `/health`, `/credit user_id amount`, and `/debi
 
 ## Deployment
 
-The bot uses Telegram polling, so deploy it on Render as a **Background Worker**, not a web service. Set required environment variables in Render's Environment section; never commit `.env` or paste credentials into chats. Review startup logs after deploying.
+The bot supports both Telegram polling (local/worker mode) and Telegram webhooks (Render Web Service mode). On Render, `RENDER_EXTERNAL_URL` automatically selects webhook mode and the server binds to `PORT`. Set required environment variables in Render's Environment section; never commit `.env` or paste credentials into chats. Review startup logs after deploying.
 
 ## Operational notes
 
