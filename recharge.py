@@ -162,7 +162,9 @@ async def got_utr(msg: Message, state: FSMContext):
         return await msg.answer("⌛ Session expired. Start the recharge again.")
     if not (re.fullmatch(r"\d{12}", utr) or re.fullmatch(r"FMP[A-Z0-9]{6,40}", utr)):
         return await msg.answer("❌ Invalid. Send the 12-digit UTR (digits only) or the FMP… transaction ID.")
-    if await payments.id_in_use([utr]):
+    if await payments.id_in_use([utr]) and not await payments.has_retryable_auto_upi(
+        msg.from_user.id, amt, utr
+    ):
         return await msg.answer("❌ <b>This UTR was already used.</b>", parse_mode="HTML",
                                 reply_markup=KB([B("⬅️ Payment Methods", "recharge")]))
     wait = await msg.answer("🔎 <i>Verifying your payment… this can take up to a minute.</i>", parse_mode="HTML")
