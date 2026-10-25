@@ -92,7 +92,7 @@ async def gate(cq, sid=None):
 async def render_root(target):
     cat = await s3_catalog()
     if not cat:
-        return await edit(target, BUSY_TXT, KB([B("🔄 Try again", "s3_user_root")], [B("⬅️ Back", "back_main")]))
+        return await edit(target, BUSY_TXT, KB([B("🔄 Try again", "s3_user_root")], [B("🏠 Nexora Home", "back_main")]))
     pinned, seen = [], set()
     for label, wanted in (("📱 Telegram", "Telegram"), ("💬 WhatsApp", "WhatsApp")):
         sid = find_service(cat, wanted)
@@ -104,16 +104,15 @@ async def render_root(target):
         sid = next((s for s, e in cat.items() if norm(e["name"]) == norm(wanted)), None)
         if sid and sid not in seen:
             pinned.append((wanted, sid)); seen.add(sid)
-    text = ("❤️‍🔥 <b>VTH PANEL</b><b> SMS &amp; Virtual Number Activation</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"<blockquote>⚡ <b>{len(cat):,}+</b> apps &amp; platforms .\n"
-            "🌍 Numbers from many countries, live stock &amp; prices .\n"
-            "💯 <b>Auto refund</b> if no SMS arrives.\n"
-            "🚀 OTP delivered straight into this chat.</blockquote>\n"
-            "⭐ <b>Popular Services:</b>")
+    text = (f"📲 <b>NEXORA · OTP SERVICES</b>\n{LINE}\n"
+            f"<blockquote>⚡ <b>{len(cat):,}+</b> apps and platforms\n"
+            "🌍 Choose a country and check the live price\n"
+            "📩 OTP arrives right here in this chat\n"
+            "🛡️ Refund rules depend on the selected service.</blockquote>\n"
+            "👇 <b>Choose a popular service or browse all:</b>")
     rows = chunk([B(label, f"s3s:{sid}:0") for label, sid in pinned], 2)
     rows.append([B(f"🔎 Search All {len(cat):,} Services", "s3q")])
-    rows.append([B("📂 Browse All Services", "s3pg:0"), B("ℹ️ Help", "s3help")])
+    rows.append([B("📂 Browse All", "s3pg:0"), B("❔ How It Works", "s3help")])
     rows.append([B("⬅️ Back", "back_main")])
     await edit(target, text, KB(*rows))
 
