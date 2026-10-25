@@ -46,7 +46,7 @@ async def build_menu(page=0, query=None):
         return ("❌ <b>Service is temporarily unavailable.</b>\n<i>Please try again later.</i>",
                 KB([B("🏠 Nexora Home", "back_main")]))
     if not rows:
-        return "❌ <b>No countries available right now.</b>", KB([B("Home", "back_main")])
+        return "❌ <b>No countries available right now.</b>", KB([B("🏠 Nexora Home", "back_main")])
     if query:
         q = query.lower().strip()
         rows = [r for r in rows if q in r["country_code"].lower() or q in r["name"].lower()
@@ -162,7 +162,7 @@ async def country(cq: CallbackQuery):
     else:
         text += "\n✅ <b>Ready to purchase?</b>"
         kb = KB([B(f"🛒 Buy for {fmt_short(price)}", f"s2:confirm:{code}:{price:.2f}")],
-                [B("Back", "s2:page:0")], [B("Home", "back_main")])
+                [B("⬅️ Back to Countries", "s2:page:0")], [B("🏠 Nexora Home", "back_main")])
     await edit(cq, text, kb)
 
 
@@ -176,7 +176,7 @@ async def confirm(cq: CallbackQuery):
     await cq.answer("🔄 Processing purchase...")
     await edit(cq, "<b>🔄 Processing Purchase...</b>\n<i>Contacting servers...</i>")
     r = await buy_tg(cq.from_user.id, code, float(shown))
-    back = KB([B("◾ Back", "s2:page:0")], [B("◾ Home", "back_main")])
+    back = KB([B("⬅️ Back to Countries", "s2:page:0")], [B("🏠 Nexora Home", "back_main")])
     k = r["kind"]
     if k == "ok":
         o = r["order"]
