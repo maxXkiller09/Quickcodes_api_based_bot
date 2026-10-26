@@ -267,6 +267,11 @@ async def buy_s3(uid, sid, cid, op, shown, chat_id, msg_id):
     st, d = await qc("s3", "POST", "/v1/s3/buy", json={"service": sid, "country": str(cid), "operator": str(op)}, timeout=60)
     if not d.get("ok"):
         await refund(uid, price)
+        await notify.alert_admins(
+            f"❌ <b>Purchase failed · Server 3</b>\\nUser: <code>{uid}</code>\\n"
+            f"Item: {cat[sid]['name']} · country {cid} · operator {op}\\n"
+            f"Amount: ₹{price:g}\\nStatus: Failed; wallet refund issued",
+            key=f"fail:s3:{uid}:{sid}:{cid}:{op}:{d.get('error', 'unknown')}", every=60)
         if d.get("error") == "timeout":
             await _ambiguous("Server 3", uid, f"{cat[sid]['name']} / {cid} / op {op}", d)
         kind, text = await explain("s3", st, d)
@@ -285,6 +290,11 @@ async def buy_s3(uid, sid, cid, op, shown, chat_id, msg_id):
         await notify.alert_admins(f"🚨 <b>Server 3: order {d['order_id']} bought but NOT saved</b> (user <code>{uid}</code>). "
                                   "User refunded; the API will time it out and refund your Quick Codes wallet.")
         return {"kind": "fail", "text": BUSY_USER}
+    await notify.alert_admins(
+        f"🛒 <b>Purchase successful · Server 3</b>\\nUser: <code>{uid}</code>\\n"
+        f"Item: {task['service']} · {task.get('country') or cid}\\n"
+        f"Amount: ₹{price:g}\\nOrder: <code>{task['order_id']}</code>\\nStatus: Number reserved; OTP pending",
+        key=f"buy:s3:{task['order_id']}", every=1)
     return {"kind": "ok", "task": task, "balance": await get_balance(uid)}
 
 
@@ -362,9 +372,11 @@ async def s3_poll(t):
     if lost or time.time() - t["ts"] > OTP_TIMEOUT + 300:
         won = await cancel_task_with_refund(t, "lost")
         if won:
-            await notify.alert_admins(f"⚠️ Server 3 order <code>{t['order_id']}</code> could not be tracked - "
-                                      f"refund is being processed for user <code>{t['user_id']}</code> "
-                                      f"(₹{t['price']:g}).")
+            await notify.alert_admins(
+                f"❌ <b>Purchase cancelled · Server 3</b>\\nUser: <code>{t['user_id']}</code>\\n"
+                f"Item: {t['service']} · {t.get('country') or t.get('country_id')}\\n"
+                f"Amount: ₹{float(t['price']):g}\\nOrder: <code>{t['order_id']}</code>\\nStatus: Cancelled; refund processed/queued",
+                key=f"cancel:s3:{t['order_id']}", every=1)
         return {"act": "cancelled", "won": bool(won)}
     return {"act": "error"}
 
