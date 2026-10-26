@@ -105,6 +105,10 @@ async def buy_tg(uid, code, shown):
     st, d = await qc("s2", "POST", "/v1/s2/buy", json={"country_code": code}, timeout=60)
     if not d.get("ok"):
         await refund(uid, price)
+        await notify.alert_admins(
+            f"❌ <b>Purchase failed · Server 2</b>\nUser: <code>{uid}</code>\n"
+            f"Item: Telegram account · {code}\nAmount: ₹{price:g}\nStatus: Failed; wallet refund issued",
+            key=f"fail:s2:{uid}:{code}:{d.get('error', 'unknown')}", every=60)
         if d.get("error") == "timeout":
             await _ambiguous("Server 2", uid, f"Telegram {code}", d)
         kind, text = await explain("s2", st, d)
@@ -114,6 +118,10 @@ async def buy_tg(uid, code, shown):
     order = {"user_id": uid, "type": "tg", "title": f"Telegram · {country}", "number": d["number"],
              "price": price, "api_price": d.get("price"), "api_order_id": d["order_id"], "date": utcnow()}
     await _record(order)
+    await notify.alert_admins(
+        f"🛒 <b>Purchase successful · Server 2</b>\nUser: <code>{uid}</code>\n"
+        f"Item: Telegram account · {country}\nAmount: ₹{price:g}\nStatus: Purchased",
+        key=f"buy:s2:{d['order_id']}", every=1)
     return {"kind": "ok", "order": order, "country": country, "balance": await get_balance(uid)}
 
 
@@ -259,6 +267,11 @@ async def buy_s3(uid, sid, cid, op, shown, chat_id, msg_id):
     st, d = await qc("s3", "POST", "/v1/s3/buy", json={"service": sid, "country": str(cid), "operator": str(op)}, timeout=60)
     if not d.get("ok"):
         await refund(uid, price)
+        await notify.alert_admins(
+            f"❌ <b>Purchase failed · Server 3</b>\nUser: <code>{uid}</code>\n"
+            f"Item: {cat[sid]['name']} · country {cid} · operator {op}\n"
+            f"Amount: ₹{price:g}\nStatus: Failed; wallet refund issued",
+            key=f"fail:s3:{uid}:{sid}:{cid}:{op}:{d.get('error', 'unknown')}", every=60)
         if d.get("error") == "timeout":
             await _ambiguous("Server 3", uid, f"{cat[sid]['name']} / {cid} / op {op}", d)
         kind, text = await explain("s3", st, d)
@@ -277,6 +290,11 @@ async def buy_s3(uid, sid, cid, op, shown, chat_id, msg_id):
         await notify.alert_admins(f"🚨 <b>Server 3: order {d['order_id']} bought but NOT saved</b> (user <code>{uid}</code>). "
                                   "User refunded; the API will time it out and refund your Quick Codes wallet.")
         return {"kind": "fail", "text": BUSY_USER}
+    await notify.alert_admins(
+        f"🛒 <b>Purchase successful · Server 3</b>\nUser: <code>{uid}</code>\n"
+        f"Item: {task['service']} · {task.get('country') or cid}\n"
+        f"Amount: ₹{price:g}\nOrder: <code>{task['order_id']}</code>\nStatus: Number reserved; OTP pending",
+        key=f"buy:s3:{task['order_id']}", every=1)
     return {"kind": "ok", "task": task, "balance": await get_balance(uid)}
 
 
@@ -354,9 +372,11 @@ async def s3_poll(t):
     if lost or time.time() - t["ts"] > OTP_TIMEOUT + 300:
         won = await cancel_task_with_refund(t, "lost")
         if won:
-            await notify.alert_admins(f"⚠️ Server 3 order <code>{t['order_id']}</code> could not be tracked - "
-                                      f"refund is being processed for user <code>{t['user_id']}</code> "
-                                      f"(₹{t['price']:g}).")
+            await notify.alert_admins(
+                f"❌ <b>Purchase cancelled · Server 3</b>\nUser: <code>{t['user_id']}</code>\n"
+                f"Item: {t['service']} · {t.get('country') or t.get('country_id')}\n"
+                f"Amount: ₹{float(t['price']):g}\nOrder: <code>{t['order_id']}</code>\nStatus: Cancelled; refund processed/queued",
+                key=f"cancel:s3:{t['order_id']}", every=1)
         return {"act": "cancelled", "won": bool(won)}
     return {"act": "error"}
 
@@ -481,9 +501,18 @@ async def smm_sync_order(o):
     st, d = await qc("smm", "GET", f"/v1/smm/order/{o['order_id']}")
     if not d.get("ok"):
         return o, 0.0
+    new_status = str(d.get("status") or o.get("status") or "").lower()
+    old_status = str(o.get("status") or "").lower()
     await smm_orders.update_one({"_id": o["_id"]}, {"$set": {
-        "status": str(d.get("status") or o.get("status") or "").lower(),
+        "status": new_status,
         "start_count": d.get("start_count"), "remains": d.get("remains")}})
+    if new_status != old_status and new_status in {"completed", "partial", "cancelled", "canceled", "failed", "fail", "refunded"}:
+        await notify.alert_admins(
+            f"📦 <b>SMM order status update</b>\nUser: <code>{o['user_id']}</code>\n"
+            f"Item: {o.get('service', 'SMM service')}\nQuantity: {o.get('qty', 'N/A')}\n"
+            f"Amount: ₹{float(o.get('cost') or 0):g}\nOrder: <code>{o['order_id']}</code>\n"
+            f"Status: {new_status.title()}",
+            key=f"smm-status:{o['order_id']}:{new_status}", every=1)
     got = 0.0
     if d.get("refunded") and not o.get("refunded"):
         api_ref = float(d.get("refund_amount") or 0)
