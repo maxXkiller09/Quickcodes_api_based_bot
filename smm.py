@@ -403,9 +403,9 @@ async def exec_order(cq: CallbackQuery, state: FSMContext):
         o = r["order"]
         qty_txt = "Package" if o.get("package") else format(o["qty"], ",")
         await notify.alert_admins(
-            f"🛒 <b>Purchase successful · SMM Panel</b>\\nUser: <code>{uid}</code>\\n"
-            f"Item: {o['service']}\\nQuantity: {qty_txt}\\nAmount: ₹{float(o['cost']):g}\\n"
-            f"Order: <code>{o['order_id']}</code>\\nStatus: {o.get('status', 'pending')}",
+            f"🛒 <b>Purchase successful · SMM Panel</b>\nUser: <code>{uid}</code>\n"
+            f"Item: {o['service']}\nQuantity: {qty_txt}\nAmount: ₹{float(o['cost']):g}\n"
+            f"Order: <code>{o['order_id']}</code>\nStatus: {o.get('status', 'pending')}",
             key=f"buy:smm:{o['order_id']}", every=1)
         await state.clear()
         return await edit(cq,
@@ -427,8 +427,8 @@ async def exec_order(cq: CallbackQuery, state: FSMContext):
         return await edit(cq, f"❌ <b>Insufficient balance.</b> You need {fmt_curr(r['need'])} more.",
                           KB([B("💰 Recharge", "recharge")], [B("⬅️ Back", "feature_smm_external")]))
     await notify.alert_admins(
-        f"❌ <b>Purchase failed · SMM Panel</b>\\nUser: <code>{uid}</code>\\n"
-        f"Item: {data.get('sid', 'Unknown')}\\nAmount: ₹{float(data.get('cost') or 0):g}\\nStatus: Failed",
+        f"❌ <b>Purchase failed · SMM Panel</b>\nUser: <code>{uid}</code>\n"
+        f"Item: {data.get('sid', 'Unknown')}\nAmount: ₹{float(data.get('cost') or 0):g}\nStatus: Failed",
         key=f"fail:smm:{uid}:{data.get('sid')}:{int(now // 60)}", every=60)
     await edit(cq, f"❌ <b>Order failed</b>\n{r['text']}", KB([B("⬅️ Back", "feature_smm_external")]))
 
