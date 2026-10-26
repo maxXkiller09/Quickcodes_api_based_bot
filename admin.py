@@ -40,29 +40,57 @@ IS_ADMIN = F.from_user.id.in_(ADMIN_IDS)
 
 
 async def health_snapshot():
-    """Return a safe owner health summary without exposing credentials or calling providers."""
-    lines = ["🩺 <b>NEXORA · HEALTH</b>", SEP]
+    """Live, read-only owner diagnostics. Never displays API credentials or OTP values."""
+    import asyncio
+    from datetime import datetime, timezone, timedelta
+    from db import tasks, smm_orders, orders
+
+    lines = ["🩺 <b>NEXORA · LIVE HEALTH</b>", SEP]
     try:
-        await _client.admin.command("ping")
+        await asyncio.wait_for(_client.admin.command("ping"), timeout=5)
         lines.append("• MongoDB: 🟢 reachable")
     except Exception:
         lines.append("• MongoDB: 🔴 unreachable")
 
     try:
-        settings = await get_settings()
+        settings = await asyncio.wait_for(get_settings(), timeout=5)
         api_keys = settings.get("api_keys") or {}
-        for key, label in (("s2", "Server 2 API key"), ("s3", "Server 3 API key"), ("smm", "SMM API key")):
-            configured = bool(str(api_keys.get(key) or "").strip())
-            lines.append(f"• {label}: {'🟢 configured' if configured else '🟡 missing'} (not live-tested)")
-        utr_ready = bool(settings.get("UTR_API_MAIL") and settings.get("UTR_API_PASS"))
-        lines.append(f"• UTR verification credentials: {'🟢 configured' if utr_ready else '🟡 missing'}")
-        manual_ready = bool(settings.get("MANUAL_UPI_ID") or settings.get("MANUAL_QR_FILE_ID"))
-        lines.append(f"• Manual UPI details: {'🟢 configured' if manual_ready else '🟡 missing'}")
+        for key, label, path, params in (
+            ("s2", "Server 2 · Telegram accounts", "/v1/s2/countries", None),
+            ("s3", "Server 3 · OTP + WhatsApp", "/v1/s3/services", {"limit": 1, "offset": 0}),
+            ("smm", "SMM Panel", "/v1/smm/services", {"limit": 1, "offset": 0}),
+        ):
+            if not str(api_keys.get(key) or "").strip():
+                lines.append(f"• {label}: 🟡 API key missing")
+                continue
+            try:
+                status, data = await asyncio.wait_for(
+                    qc(key, "GET", path, params=params, timeout=8, key=api_keys[key]), timeout=9)
+                if status == 200 and data.get("ok"):
+                    lines.append(f"• {label}: 🟢 API reachable")
+                elif status == 0:
+                    lines.append(f"• {label}: 🔴 connection/timeout error")
+                elif status in (401, 403) or data.get("error") in ("invalid_api_key", "wrong_server_key", "missing_api_key"):
+                    lines.append(f"• {label}: 🔴 API key rejected")
+                else:
+                    safe_error = str(data.get("error") or f"HTTP {status}")[:70]
+                    lines.append(f"• {label}: 🟠 API responded with issue ({esc(safe_error)})")
+            except Exception:
+                lines.append(f"• {label}: 🔴 check timed out/failed")
     except Exception:
-        lines.append("• Settings read: 🔴 failed")
+        lines.append("• API settings: 🔴 could not read settings")
+
+    try:
+        now = datetime.now(timezone.utc)
+        since = now - timedelta(hours=24)
+        # Counts only; never expose order numbers, phone numbers, or OTP contents.
+        recent_otp = await tasks.count_documents({"ts": {"$gte": since.timestamp()}})
+        lines.append(f"• OTP task records (last 24h): {recent_otp}")
+    except Exception:
+        lines.append("• OTP task records: 🟡 unavailable")
 
     lines.append("")
-    lines.append("<i>Configuration checks only; provider APIs and live payments are not called.</i>")
+    lines.append("<i>Live API checks use read-only catalog endpoints. A green Server 3 check confirms API connectivity, not that every country/operator can deliver WhatsApp SMS. OTP delivery must be diagnosed per order.</i>")
     return "\n".join(lines)
 
 SERVICES = [("tg", "Telegram Accounts"), ("wa", "WhatsApp Accounts"), ("otp", "All Apps OTP"), ("smm", "SMM Panel")]
