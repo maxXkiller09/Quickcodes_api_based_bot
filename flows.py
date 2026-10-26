@@ -501,9 +501,18 @@ async def smm_sync_order(o):
     st, d = await qc("smm", "GET", f"/v1/smm/order/{o['order_id']}")
     if not d.get("ok"):
         return o, 0.0
+    new_status = str(d.get("status") or o.get("status") or "").lower()
+    old_status = str(o.get("status") or "").lower()
     await smm_orders.update_one({"_id": o["_id"]}, {"$set": {
-        "status": str(d.get("status") or o.get("status") or "").lower(),
+        "status": new_status,
         "start_count": d.get("start_count"), "remains": d.get("remains")}})
+    if new_status != old_status and new_status in {"completed", "partial", "cancelled", "canceled", "failed", "fail", "refunded"}:
+        await notify.alert_admins(
+            f"📦 <b>SMM order status update</b>\\nUser: <code>{o['user_id']}</code>\\n"
+            f"Item: {o.get('service', 'SMM service')}\\nQuantity: {o.get('qty', 'N/A')}\\n"
+            f"Amount: ₹{float(o.get('cost') or 0):g}\\nOrder: <code>{o['order_id']}</code>\\n"
+            f"Status: {new_status.title()}",
+            key=f"smm-status:{o['order_id']}:{new_status}", every=1)
     got = 0.0
     if d.get("refunded") and not o.get("refunded"):
         api_ref = float(d.get("refund_amount") or 0)
