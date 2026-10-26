@@ -427,9 +427,9 @@ async def _edit_task(task, text, kb=None):
 
 async def show_completed(task, otp):
     await notify.alert_admins(
-        f"✅ <b>Order completed · Server 3</b>\\nUser: <code>{task['user_id']}</code>\\n"
-        f"Item: {task['service']} · {task.get('country') or task.get('country_id')}\\n"
-        f"Amount: ₹{float(task['price']):g}\\nOrder: <code>{task['order_id']}</code>\\nStatus: OTP received",
+        f"✅ <b>Order completed · Server 3</b>\nUser: <code>{task['user_id']}</code>\n"
+        f"Item: {task['service']} · {task.get('country') or task.get('country_id')}\n"
+        f"Amount: ₹{float(task['price']):g}\nOrder: <code>{task['order_id']}</code>\nStatus: OTP received",
         key=f"complete:s3:{task['order_id']}", every=1)
     kb = KB([B("📋 Copy OTP", copy=otp)],
             [B("🔄 Buy Again", f"s3o:{task['sid']}:{task['country_id']}:{task['operator']}"),
@@ -448,9 +448,9 @@ async def show_completed(task, otp):
 
 async def show_cancelled(task, why="⏱ <b>No OTP received.</b> Order cancelled."):
     await notify.alert_admins(
-        f"❌ <b>Order cancelled · Server 3</b>\\nUser: <code>{task['user_id']}</code>\\n"
-        f"Item: {task['service']} · {task.get('country') or task.get('country_id')}\\n"
-        f"Amount: ₹{float(task['price']):g}\\nOrder: <code>{task['order_id']}</code>\\nStatus: Cancelled/refunded",
+        f"❌ <b>Order cancelled · Server 3</b>\nUser: <code>{task['user_id']}</code>\n"
+        f"Item: {task['service']} · {task.get('country') or task.get('country_id')}\n"
+        f"Amount: ₹{float(task['price']):g}\nOrder: <code>{task['order_id']}</code>\nStatus: Cancelled/refunded",
         key=f"cancelled:s3:{task['order_id']}", every=1)
     await _edit_task(task, f"{why}\n💰 <b>Refunded:</b> {fmt_curr(task['price'])}", end_kb(task))
 
