@@ -105,6 +105,10 @@ async def buy_tg(uid, code, shown):
     st, d = await qc("s2", "POST", "/v1/s2/buy", json={"country_code": code}, timeout=60)
     if not d.get("ok"):
         await refund(uid, price)
+        await notify.alert_admins(
+            f"❌ <b>Purchase failed · Server 2</b>\\nUser: <code>{uid}</code>\\n"
+            f"Item: Telegram account · {code}\\nAmount: ₹{price:g}\\nStatus: Failed; wallet refund issued",
+            key=f"fail:s2:{uid}:{code}:{d.get('error', 'unknown')}", every=60)
         if d.get("error") == "timeout":
             await _ambiguous("Server 2", uid, f"Telegram {code}", d)
         kind, text = await explain("s2", st, d)
@@ -114,6 +118,10 @@ async def buy_tg(uid, code, shown):
     order = {"user_id": uid, "type": "tg", "title": f"Telegram · {country}", "number": d["number"],
              "price": price, "api_price": d.get("price"), "api_order_id": d["order_id"], "date": utcnow()}
     await _record(order)
+    await notify.alert_admins(
+        f"🛒 <b>Purchase successful · Server 2</b>\\nUser: <code>{uid}</code>\\n"
+        f"Item: Telegram account · {country}\\nAmount: ₹{price:g}\\nStatus: Purchased",
+        key=f"buy:s2:{d['order_id']}", every=1)
     return {"kind": "ok", "order": order, "country": country, "balance": await get_balance(uid)}
 
 
