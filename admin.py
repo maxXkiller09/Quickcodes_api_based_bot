@@ -40,30 +40,77 @@ IS_ADMIN = F.from_user.id.in_(ADMIN_IDS)
 
 
 async def health_snapshot():
-    """Return a safe owner health summary without exposing credentials or calling providers."""
-    lines = ["🩺 <b>NEXORA · HEALTH</b>", SEP]
+    """Live, read-only health checks. Never places a purchase or exposes credentials."""
+    import asyncio
+    from datetime import datetime, timedelta
+    import notify
+    from db import tasks, smm_orders
+
+    lines = ["🩺 <b>NEXORA · LIVE HEALTH CHECK</b>", SEP]
+    overall_bad = False
+
+    # Telegram bot API
     try:
-        await _client.admin.command("ping")
+        bot = notify.get_bot()
+        if bot is None:
+            raise RuntimeError("Bot client not initialized")
+        me = await asyncio.wait_for(bot.get_me(), timeout=8)
+        lines.append(f"• Telegram Bot API: 🟢 online (@{esc(me.username or me.first_name)})")
+    except Exception:
+        overall_bad = True
+        lines.append("• Telegram Bot API: 🔴 failed")
+
+    # MongoDB and active OTP orders
+    try:
+        await asyncio.wait_for(_client.admin.command("ping"), timeout=8)
+        active = await tasks.count_documents({"status": {"$in": ["waiting", "active", "pending"]}})
+        since = datetime.utcnow() - timedelta(hours=24)
+        completed = await tasks.count_documents({"status": {"$in": ["completed", "success"]}, "updated_at": {"$gte": since}})
+        cancelled = await tasks.count_documents({"status": {"$in": ["cancelled", "canceled", "refunded"]}, "updated_at": {"$gte": since}})
         lines.append("• MongoDB: 🟢 reachable")
+        lines.append(f"• OTP orders: 🟡 {active} active · last 24h: {completed} completed / {cancelled} cancelled")
     except Exception:
-        lines.append("• MongoDB: 🔴 unreachable")
+        overall_bad = True
+        lines.append("• MongoDB / OTP tracking: 🔴 check failed")
 
+    # Provider health: read-only catalog calls only; no purchase, cancel, or balance mutation.
     try:
-        settings = await get_settings()
+        settings = await get_settings(force=True)
         api_keys = settings.get("api_keys") or {}
-        for key, label in (("s2", "Server 2 API key"), ("s3", "Server 3 API key"), ("smm", "SMM API key")):
-            configured = bool(str(api_keys.get(key) or "").strip())
-            lines.append(f"• {label}: {'🟢 configured' if configured else '🟡 missing'} (not live-tested)")
-        utr_ready = bool(settings.get("UTR_API_MAIL") and settings.get("UTR_API_PASS"))
-        lines.append(f"• UTR verification credentials: {'🟢 configured' if utr_ready else '🟡 missing'}")
-        manual_ready = bool(settings.get("MANUAL_UPI_ID") or settings.get("MANUAL_QR_FILE_ID"))
-        lines.append(f"• Manual UPI details: {'🟢 configured' if manual_ready else '🟡 missing'}")
     except Exception:
-        lines.append("• Settings read: 🔴 failed")
+        settings = {}
+        api_keys = {}
+        overall_bad = True
+        lines.append("• Settings: 🔴 could not read")
 
-    lines.append("")
-    lines.append("<i>Configuration checks only; provider APIs and live payments are not called.</i>")
-    return "\n".join(lines)
+    checks = [
+        ("s2", "Server 2 · Telegram accounts", "/v1/s2/countries", None),
+        ("s3", "Server 3 · OTP + WhatsApp", "/v1/s3/services", {"limit": 1, "offset": 0}),
+        ("smm", "SMM Panel · services", "/v1/smm/services", {"limit": 1, "offset": 0}),
+    ]
+    for key, label, path, params in checks:
+        if not str(api_keys.get(key) or "").strip():
+            lines.append(f"• {label}: 🟡 API key missing")
+            overall_bad = True
+            continue
+        try:
+            status, data = await asyncio.wait_for(qc(key, "GET", path, params=params, timeout=8), timeout=10)
+            err = str((data or {}).get("error") or "").lower()
+            if 200 <= status < 300 and (data or {}).get("ok") is not False and err not in {"invalid_api_key", "wrong_server_key", "banned", "no_key"}:
+                lines.append(f"• {label}: 🟢 API responding (HTTP {status})")
+            elif err in {"invalid_api_key", "wrong_server_key", "banned", "no_key", "missing_api_key"}:
+                lines.append(f"• {label}: 🔴 API key rejected")
+                overall_bad = True
+            else:
+                lines.append(f"• {label}: 🔴 API error (HTTP {status or 'no response'})")
+                overall_bad = True
+        except Exception:
+            lines.append(f"• {label}: 🔴 timeout / connection error")
+            overall_bad = True
+
+    lines += ["", f"<b>Overall: {'🔴 Issues found' if overall_bad else '🟢 Core checks passed'}</b>",
+              "<i>Read-only checks; no purchases are created. API reachable does not guarantee OTP delivery to every country/operator. OTP delivery must be diagnosed from individual order status.</i>"]
+    return "\\n".join(lines)
 
 SERVICES = [("tg", "Telegram Accounts"), ("wa", "WhatsApp Accounts"), ("otp", "All Apps OTP"), ("smm", "SMM Panel")]
 APIS = [("s2", "Server 2", "Telegram accounts"), ("s3", "Server 3", "OTP + WhatsApp"), ("smm", "SMM Panel", "social media")]
