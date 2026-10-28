@@ -83,8 +83,9 @@ async def s2_view(force=False):
     rows = await s2_rows(force)
     if rows is None:
         return None
-    # Telegram account pricing uses the current provider rate without reseller markup.
-    return [{**r, "my_price": round(float(r.get("price") or 0), 2)} for r in rows]
+    # Server 2 Telegram account pricing follows the admin-configured markup.
+    pct = await profit_pct("s2")
+    return [{**r, "my_price": with_profit(r.get("price"), pct)} for r in rows]
 
 
 async def buy_tg(uid, code, shown):
