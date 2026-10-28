@@ -174,8 +174,8 @@ async def render_profit(cq):
     ]
     rows = [[B(f"✏️ {n} profit %", f"adm:pset:{k}")] for k, n, d in APIS if k != "s2"]
     rows.append([B("⬅️ Back", "adm:home")])
-    await edit(cq, f"📈 <b>Profit %</b>\\n{SEP}\\n" + "\\n".join(lines) +
-               "\\n\\n<i>Telegram Accounts use the current Quick Codes API price with no added markup. Other services add their configured percentage.</i>", KB(*rows))
+    await edit(cq, f"📈 <b>Profit %</b>\n{SEP}\n" + "\n".join(lines) +
+               "\n\n<i>Telegram Accounts use the current Quick Codes API price with no added markup. Other services add their configured percentage.</i>", KB(*rows))
 
 
 @router.callback_query(F.data == "adm:profit", IS_ADMIN)
