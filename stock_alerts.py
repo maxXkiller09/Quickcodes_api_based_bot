@@ -50,6 +50,18 @@ async def unsubscribe(user_id: int, country_code: str):
     )
 
 
+def is_restock_transition(previous_stock, current_stock) -> bool:
+    """Return true only for a known zero-to-positive stock transition."""
+    if previous_stock is None:
+        return False
+    try:
+        previous = max(0, int(previous_stock or 0))
+        current = max(0, int(current_stock or 0))
+    except (TypeError, ValueError):
+        return False
+    return previous == 0 and current > 0
+
+
 async def stop_all(user_id: int):
     await init_stock_alerts()
     await subscriptions.update_many({"user_id": int(user_id), "active": True}, {"$set": {"active": False}})
@@ -78,7 +90,7 @@ async def monitor_loop(interval: int = 90):
                                       "price": float(row.get("my_price") or 0)}},
                             upsert=True,
                         )
-                        if not old or int(old.get("stock", 0) or 0) > 0 or stock <= 0:
+                        if not is_restock_transition(old.get("stock") if old else None, stock):
                             continue
                         subs = subscriptions.find({"country_code": code, "active": True})
                         name = escape(str(row.get("name") or code))
