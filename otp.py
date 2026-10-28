@@ -32,6 +32,7 @@ from flows import (s3_catalog, s3_countries, s3_offers, buy_s3, s3_poll, s3_canc
                    find_service, search_services, is_wa, norm, OTP_TIMEOUT, CANCEL_LOCK)
 from flags import flag_for
 from notify import get_bot
+from fampay import send_sale_log
 from utils import B, KB, esc, fmt_curr, fmt_short, edit, is_spamming, chunk, NOPREV
 
 router = Router()
@@ -459,7 +460,12 @@ async def buy_cb(cq: CallbackQuery):
     r = await buy_s3(cq.from_user.id, sid, cid, op, float(shown), cq.message.chat.id, cq.message.message_id)
     k = r["kind"]
     if k == "ok":
-        text, kb = wait_view(r["task"], OTP_TIMEOUT)
+        task = r["task"]
+        await send_sale_log(user_id=cq.from_user.id, service=task["service"],
+                            country=task.get("country") or task.get("country_id") or "Unknown",
+                            number=task["phone"], price=task["price"],
+                            status="Number reserved · OTP pending")
+        text, kb = wait_view(task, OTP_TIMEOUT)
         return await edit(cq, text, kb)
     if k == "price":
         await cq.message.answer(f"ℹ️ Price changed to <b>{fmt_short(r['price'])}</b>. Please confirm again.", parse_mode="HTML")
