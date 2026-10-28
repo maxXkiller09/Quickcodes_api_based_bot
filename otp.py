@@ -217,6 +217,9 @@ async def render_countries(target, sid, page=0, query=None, full=False):
     if query:
         q = query.lower().strip()
         rows = [r for r in rows if q in r["name"].lower()]
+    # WhatsApp country options sorted by current price, cheapest first.
+    if is_wa(svc["name"]):
+        rows.sort(key=lambda r: (float(r.get("my_price") or 0), str(r.get("name") or "").lower()))
     if not rows:
         kb_rows = []
         if query:
