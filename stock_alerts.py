@@ -34,11 +34,32 @@ async def init_stock_alerts():
 
 async def subscribe(user_id: int, country_code: str):
     await init_stock_alerts()
+    code = str(country_code).strip()
     await subscriptions.update_one(
-        {"user_id": int(user_id), "country_code": str(country_code)},
+        {"user_id": int(user_id), "country_code": code},
         {"$set": {"active": True}},
         upsert=True,
     )
+
+    # Seed a fresh baseline when possible. If the monitor was idle because no
+    # users were subscribed, an old zero-stock snapshot must not cause a new
+    # subscriber to receive a stale alert for stock that returned beforehand.
+    try:
+        rows = await s2_view(force=True)
+        row = next((item for item in (rows or [])
+                    if str(item.get("country_code") or "").strip() == code), None)
+        if row is not None:
+            stock = max(0, int(row.get("stock", 0) or 0))
+            await snapshots.update_one(
+                {"country_code": code},
+                {"$set": {"stock": stock,
+                          "name": str(row.get("name") or code),
+                          "price": float(row.get("my_price") or 0)}},
+                upsert=True,
+            )
+    except Exception:
+        # Subscription remains enabled even if the provider is temporarily down.
+        logging.exception("Could not seed restock baseline for country %s", code)
 
 
 async def unsubscribe(user_id: int, country_code: str):
