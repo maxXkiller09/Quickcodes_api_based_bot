@@ -29,6 +29,7 @@ from db import service_on, get_balance
 from flows import s2_view, buy_tg, tg_code
 from flags import flag_for, strip_flags
 from utils import B, KB, esc, fmt_curr, fmt_short, edit, is_spamming, chunk
+import stock_alerts
 
 router = Router()
 TITLE = "🚀 Telegram Accounts"
@@ -155,13 +156,16 @@ async def country(cq: CallbackQuery):
             f"💰 <b>Your Balance:</b> {fmt_curr(bal)}\n")
     if bal < price:
         text += f"\n❌ <b>Insufficient Balance!</b>\n<i>Shortage: {fmt_curr(price - bal)}</i>"
-        kb = KB([B("Recharge •", "recharge")], [B("Back •", "s2:page:0")], [B("Home •", "back_main")])
+        kb = KB([B("🔔 Notify on Restock", f"stock:subscribe:{code}")],
+                [B("Recharge •", "recharge")], [B("Back •", "s2:page:0")], [B("Home •", "back_main")])
     elif qty < 1:
         text += "\n⚠️ <b>Out of Stock!</b>"
-        kb = KB([B("Back •", "s2:page:0")], [B("Home •", "back_main")])
+        kb = KB([B("🔔 Notify on Restock", f"stock:subscribe:{code}")],
+                [B("Back •", "s2:page:0")], [B("Home •", "back_main")])
     else:
         text += "\n✅ <b>Ready to purchase?</b>"
         kb = KB([B(f"🛒 Buy for {fmt_short(price)}", f"s2:confirm:{code}:{price:.2f}")],
+                [B("🔔 Notify on Restock", f"stock:subscribe:{code}")],
                 [B("⬅️ Back to Countries", "s2:page:0")], [B("🏠 Nexora Home", "back_main")])
     await edit(cq, text, kb)
 
@@ -196,6 +200,29 @@ async def confirm(cq: CallbackQuery):
                           KB([B("Recharge •", "recharge")], [B("Back •", "s2:page:0")]))
     await edit(cq, f"❌ <b>Purchase Failed</b>\n{r['text']}", back)
 
+
+
+
+@router.callback_query(F.data.startswith("stock:subscribe:"))
+async def subscribe_stock_alert(cq: CallbackQuery):
+    code = cq.data.split(":", 2)[2].strip()
+    if not code or len(code) > 32:
+        return await cq.answer("Invalid country.", show_alert=True)
+    try:
+        await stock_alerts.subscribe(cq.from_user.id, code)
+    except Exception:
+        return await cq.answer("Could not save notification. Please try again.", show_alert=True)
+    await cq.answer("🔔 Restock notification enabled!", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("stock:stop:"))
+async def stop_stock_alert(cq: CallbackQuery):
+    code = cq.data.split(":", 2)[2].strip()
+    try:
+        await stock_alerts.unsubscribe(cq.from_user.id, code)
+    except Exception:
+        return await cq.answer("Could not update notification. Please try again.", show_alert=True)
+    await cq.answer("🔕 Notification stopped for this country.", show_alert=True)
 
 @router.callback_query(F.data.startswith("s2:otp:"))
 async def get_otp(cq: CallbackQuery):
