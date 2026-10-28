@@ -482,16 +482,40 @@ async def setsaleslog_cmd(msg: Message):
     """Configure a separate destination for successful-purchase sale cards."""
     if not msg.from_user or msg.from_user.id not in ADMIN_IDS:
         return
-    if msg.chat.type not in ("group", "supergroup"):
-        return await msg.answer(
-            "ℹ️ Add the bot to your sales-log group, then send /setsaleslog inside that group.",
+    parts = (msg.text or "").split(maxsplit=1)
+    target = parts[1].strip() if len(parts) > 1 else ""
+    try:
+        if target:
+            # In a private chat, pass the channel username or numeric chat ID.
+            chat = await get_bot().get_chat(target)
+            chat_id = chat.id
+            label = chat.title or str(chat_id)
+        elif msg.chat.type in ("group", "supergroup"):
+            chat_id = msg.chat.id
+            label = msg.chat.title or str(chat_id)
+        else:
+            return await msg.answer(
+                "ℹ️ Send <code>/setsaleslog @YourChannel</code> in private, or send <code>/setsaleslog</code> inside the target group.",
+                parse_mode="HTML"
+            )
+        # Verify the bot can post before saving the destination.
+        await get_bot().send_message(
+            chat_id,
+            "✅ <b>Nexora sales logs connected.</b> Future successful purchases will appear here.",
             parse_mode="HTML"
         )
-    await set_cfg(sales_log_chat=msg.chat.id)
-    await msg.answer(
-        "✅ <b>Sales log enabled for this chat.</b>\nSuccessful purchases will post masked number/buyer details with an OPEN BOT button.",
-        parse_mode="HTML"
-    )
+        await set_cfg(sales_log_chat=chat_id)
+        await msg.answer(
+            f"✅ <b>Sales log enabled:</b> {esc(label)}\n"
+            "Successful purchases will post masked number/buyer details with an OPEN BOT button.",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        await msg.answer(
+            "❌ Could not connect this sales-log destination. Make sure the bot is an admin with permission to post, then retry.\n"
+            f"<code>{esc(str(e)[:180])}</code>",
+            parse_mode="HTML"
+        )
 
 
 @router.message(Command("fampay"))
