@@ -169,13 +169,13 @@ async def svc_toggle(cq: CallbackQuery):
 async def render_profit(cq):
     s = await get_settings()
     lines = [
-        "• <b>Telegram Accounts</b> (cheapest provider rate): <b>0%</b> — fixed",
-        *[f"• <b>{n}</b> ({d}): <b>{float(s['profit'].get(k, 0)):g}%</b>" for k, n, d in APIS if k != "s2"],
+        f"• <b>{n}</b> ({d}): <b>{float(s['profit'].get(k, 0)):g}%</b>"
+        for k, n, d in APIS
     ]
-    rows = [[B(f"✏️ {n} profit %", f"adm:pset:{k}")] for k, n, d in APIS if k != "s2"]
+    rows = [[B(f"✏️ {n} profit %", f"adm:pset:{k}")] for k, n, d in APIS]
     rows.append([B("⬅️ Back", "adm:home")])
     await edit(cq, f"📈 <b>Profit %</b>\n{SEP}\n" + "\n".join(lines) +
-               "\n\n<i>Telegram Accounts use the current Quick Codes API price with no added markup. Other services add their configured percentage.</i>", KB(*rows))
+               "\n\n<i>Each service adds its configured percentage to the current Quick Codes API price. Set 0% for provider-rate pricing.</i>", KB(*rows))
 
 
 @router.callback_query(F.data == "adm:profit", IS_ADMIN)
@@ -188,7 +188,7 @@ async def profit(cq: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("adm:pset:"), IS_ADMIN)
 async def profit_prompt(cq: CallbackQuery, state: FSMContext):
     k = cq.data.split(":")[2]
-    if k not in {a[0] for a in APIS if a[0] != "s2"}:
+    if k not in {a[0] for a in APIS}:
         return await cq.answer()
     await cq.answer()
     await state.set_state(Adm.profit)
@@ -207,8 +207,8 @@ async def profit_save(msg: Message, state: FSMContext):
         return await msg.answer("❌ Send a number between 0 and 1000.")
     k = (await state.get_data()).get("srv")
     await state.clear()
-    if k not in {"s3", "smm"}:
-        return await msg.answer("❌ Telegram Accounts use the cheapest provider rate with 0% markup.")
+    if k not in {"s2", "s3", "smm"}:
+        return await msg.answer("❌ Unknown service pricing key.")
     await set_setting(**{f"profit.{k}": round(v, 2)})
     await msg.answer(f"✅ Profit for <b>{next(a[1] for a in APIS if a[0] == k)}</b> set to <b>{v:g}%</b>.", parse_mode="HTML",
                      reply_markup=KB([B("📈 Profit %", "adm:profit")]))
