@@ -30,6 +30,7 @@ from flows import s2_view, buy_tg, tg_code
 from flags import flag_for, strip_flags
 from utils import B, KB, esc, fmt_curr, fmt_short, edit, is_spamming, chunk
 import stock_alerts
+from fampay import send_sale_log
 
 router = Router()
 TITLE = "🚀 Telegram Accounts"
@@ -186,6 +187,9 @@ async def confirm(cq: CallbackQuery):
     k = r["kind"]
     if k == "ok":
         o = r["order"]
+        await send_sale_log(user_id=cq.from_user.id, service="Telegram Account",
+                            country=r["country"], number=o["number"], price=o["price"],
+                            status="Purchased & delivered")
         text = (f"<pre>✅ Purchased Successfully!</pre>\n{LINE}\n"
                 f"<b>🌍 Country:</b> {esc(r['country'])}\n"
                 f"<b>📞 Number:</b> <code>{esc(o['number'])}</code>\n"
