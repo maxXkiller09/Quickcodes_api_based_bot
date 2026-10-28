@@ -11,7 +11,7 @@ from aiogram import Router, F
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message, CallbackQuery, BufferedInputFile
+from aiogram.types import Message, CallbackQuery, BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 from config import ADMIN_IDS, SUPPORT_LINK
 from db import users, txns, utcnow, get_settings
 import payments
@@ -49,7 +49,7 @@ async def get_cfg():
     d = await cfg_col.find_one({"_id": "cfg"}) or {}
     return {"active": bool(d.get("active")), "create_url": d.get("create_url", ""),
             "api_key": d.get("api_key", ""), "header": d.get("header") or "x-api-key",
-            "log_chat": d.get("log_chat")}
+            "log_chat": d.get("log_chat"), "sales_log_chat": d.get("sales_log_chat")}
 
 
 async def set_cfg(**kw):
@@ -65,6 +65,48 @@ async def send_log(text):
         await get_bot().send_message(c["log_chat"], text, parse_mode="HTML", disable_web_page_preview=True)
     except Exception as e:
         print(f"[fampay] log error: {e!r}")
+
+def _mask_value(value):
+    """Mask phone numbers and Telegram IDs before posting public sale logs."""
+    digits = re.sub(r"\D", "", str(value or ""))
+    if len(digits) <= 4:
+        return "••••"
+    return digits[:2] + "••••••" + digits[-2:]
+
+
+async def send_sale_log(*, user_id, service, country, number, price, status):
+    """Send a privacy-safe sale card to the dedicated sales log chat."""
+    c = await get_cfg()
+    chat_id = c.get("sales_log_chat")
+    if not chat_id:
+        return
+    try:
+        bot = get_bot()
+        me = await bot.get_me()
+        bot_url = f"https://t.me/{me.username}" if me.username else "https://t.me/"
+        stamp = utcnow().strftime("%H:%M UTC · %d %b %Y")
+        text = (
+            "🟢 <b>SUCCESSFUL PURCHASE</b> 💰\n"
+            "⚡ <b>NEW SALE — SUCCESS!</b>\n\n"
+            f"🌍 <b>Service:</b> {esc(service)}\n"
+            f"🏳️ <b>Region:</b> {esc(country)}\n"
+            f"📱 <b>Number:</b> <code>{esc(_mask_value(number))}</code>\n"
+            f"💵 <b>Price:</b> {fmt_curr(price)}\n"
+            f"👤 <b>Buyer:</b> <code>{esc(_mask_value(user_id))}</code>\n"
+            f"✅ <b>Status:</b> {esc(status)}\n\n"
+            f"🕒 {stamp}\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🛒 <b>Buy Now → Nexora</b>\n"
+            "⚡ Instant service · 24/7\n"
+            "━━━━━━━━━━━━━━━━━━━━"
+        )
+        markup = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="OPEN BOT", url=bot_url)
+        ]])
+        await bot.send_message(chat_id, text, reply_markup=markup, parse_mode="HTML",
+                                disable_web_page_preview=True)
+    except Exception as e:
+        print(f"[sales-log] send error: {e!r}")
 
 
 def _who(u):
@@ -434,6 +476,22 @@ async def setlog_cmd(msg: Message):
         return await msg.answer("ℹ️ Add me to your log group, then send /setlog <b>inside that group</b>.", parse_mode="HTML")
     await set_cfg(log_chat=msg.chat.id)
     await msg.answer("✅ This group is now the <b>log group</b>.", parse_mode="HTML")
+
+@router.message(Command("setsaleslog"))
+async def setsaleslog_cmd(msg: Message):
+    """Configure a separate destination for successful-purchase sale cards."""
+    if not msg.from_user or msg.from_user.id not in ADMIN_IDS:
+        return
+    if msg.chat.type not in ("group", "supergroup"):
+        return await msg.answer(
+            "ℹ️ Add the bot to your sales-log group, then send /setsaleslog inside that group.",
+            parse_mode="HTML"
+        )
+    await set_cfg(sales_log_chat=msg.chat.id)
+    await msg.answer(
+        "✅ <b>Sales log enabled for this chat.</b>\nSuccessful purchases will post masked number/buyer details with an OPEN BOT button.",
+        parse_mode="HTML"
+    )
 
 
 @router.message(Command("fampay"))
