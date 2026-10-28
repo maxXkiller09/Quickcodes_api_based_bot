@@ -29,7 +29,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, CallbackQuery
 from config import ADMIN_IDS, BOT_TITLE
-from db import get_settings, set_setting, users, _client
+from db import get_settings, set_setting, users, orders, txns, tasks, smm_orders, _client, utcnow
 from flows import admin_credit, admin_debit
 from qc import qc
 from utils import B, KB, esc, fmt_curr, edit, SEP
@@ -108,6 +108,7 @@ async def home(target):
     )
     kb = KB([B("🔌 Services", "adm:svc"), B("📊 Pricing", "adm:profit")],
             [B("🔑 API Connections", "adm:api"), B("💰 API Balances", "adm:bal")],
+            [B("👥 User Management", "adm:users:0")],
             [B("💳 Wallet Payments", "adm:pay")])
     await edit(target, text, kb)
 
@@ -127,6 +128,7 @@ async def admin_cmd(msg: Message, state: FSMContext):
         parse_mode="HTML",
         reply_markup=KB([B("🔌 Services", "adm:svc"), B("📊 Pricing", "adm:profit")],
                         [B("🔑 API Connections", "adm:api"), B("💰 API Balances", "adm:bal")],
+                        [B("👥 User Management", "adm:users:0")],
                         [B("💳 Wallet Payments", "adm:pay")]))
 
 
@@ -172,8 +174,8 @@ async def render_profit(cq):
     ]
     rows = [[B(f"✏️ {n} profit %", f"adm:pset:{k}")] for k, n, d in APIS if k != "s2"]
     rows.append([B("⬅️ Back", "adm:home")])
-    await edit(cq, f"📈 <b>Profit %</b>\\n{SEP}\\n" + "\\n".join(lines) +
-               "\\n\\n<i>Telegram Accounts use the current Quick Codes API price with no added markup. Other services add their configured percentage.</i>", KB(*rows))
+    await edit(cq, f"📈 <b>Profit %</b>\n{SEP}\n" + "\n".join(lines) +
+               "\n\n<i>Telegram Accounts use the current Quick Codes API price with no added markup. Other services add their configured percentage.</i>", KB(*rows))
 
 
 @router.callback_query(F.data == "adm:profit", IS_ADMIN)
@@ -369,9 +371,18 @@ async def _apply(msg, text, credit):
     u = await users.find_one({"_id": uid})
     if not u:
         return await msg.answer("❌ User not found (they must have started the bot).")
-    await (admin_credit if credit else admin_debit)(uid, amt)
-    nb = (await users.find_one({"_id": uid}) or {}).get("balance", 0)
-    await msg.answer(f"✅ {'Credited' if credit else 'Debited'} {fmt_curr(amt)} {'to' if credit else 'from'} <code>{uid}</code>\n"
+    before = float(u.get("balance", 0) or 0)
+    ok = await (admin_credit if credit else admin_debit)(uid, amt)
+    if not ok:
+        return await msg.answer("❌ Balance update failed. Please retry.")
+    updated = await users.find_one({"_id": uid}) or {}
+    nb = float(updated.get("balance", 0) or 0)
+    actual = round(max(0, nb - before) if credit else max(0, before - nb), 2)
+    if actual > 0:
+        await orders.insert_one({"user_id": uid, "type": "wallet_adjustment",
+                                 "action": "credit" if credit else "debit",
+                                 "amount": actual, "admin_id": msg.from_user.id, "date": utcnow()})
+    await msg.answer(f"✅ {'Credited' if credit else 'Debited'} {fmt_curr(actual)} {'to' if credit else 'from'} <code>{uid}</code>\n"
                      f"New balance: <b>{fmt_curr(nb)}</b>", parse_mode="HTML")
 
 
@@ -395,14 +406,133 @@ async def debit_cmd(msg: Message, command: CommandObject, state: FSMContext):
 
 @router.message(StateFilter(Adm.credit), IS_ADMIN, F.text, ~F.text.startswith("/"))
 async def credit_state(msg: Message, state: FSMContext):
+    data = await state.get_data()
+    uid = data.get("target_uid")
     await state.clear()
-    await _apply(msg, msg.text, True)
+    await _apply(msg, f"{uid} {msg.text.strip()}" if uid is not None else msg.text, True)
 
 
 @router.message(StateFilter(Adm.debit), IS_ADMIN, F.text, ~F.text.startswith("/"))
 async def debit_state(msg: Message, state: FSMContext):
+    data = await state.get_data()
+    uid = data.get("target_uid")
     await state.clear()
-    await _apply(msg, msg.text, False)
+    await _apply(msg, f"{uid} {msg.text.strip()}" if uid is not None else msg.text, False)
+
+
+# ============================== user management ==============================
+USER_PAGE_SIZE = 8
+
+
+def _user_label(user):
+    name = esc(str(user.get("name") or "Unknown")[:40])
+    username = user.get("username")
+    return f"{name} (@{esc(username)})" if username else name
+
+
+async def _render_users(target, page=0):
+    total = await users.count_documents({})
+    pages = max(1, (total + USER_PAGE_SIZE - 1) // USER_PAGE_SIZE)
+    page = max(0, min(int(page), pages - 1))
+    cursor = users.find({}, {"_id": 1, "name": 1, "username": 1, "balance": 1, "joined": 1})
+    cursor = cursor.sort([("joined", -1), ("_id", -1)]).skip(page * USER_PAGE_SIZE).limit(USER_PAGE_SIZE)
+    rows = await cursor.to_list(length=USER_PAGE_SIZE)
+    lines = [f"👥 <b>NEXORA USERS</b> · {total:,} total", SEP,
+             f"<i>Page {page + 1}/{pages} · newest first</i>", ""]
+    buttons = []
+    for user in rows:
+        uid = int(user["_id"])
+        lines.append(f"• {_user_label(user)}\n  🆔 <code>{uid}</code> · 💰 <b>{fmt_curr(user.get('balance', 0))}</b>")
+        buttons.append([B(f"👤 {str(user.get('name') or uid)[:22]} · {uid}", f"adm:user:{uid}")])
+    if not rows:
+        lines.append("No users found yet.")
+    nav = []
+    if page > 0:
+        nav.append(B("⬅️ Previous", f"adm:users:{page - 1}"))
+    if page < pages - 1:
+        nav.append(B("Next ➡️", f"adm:users:{page + 1}"))
+    if nav:
+        buttons.append(nav)
+    buttons.append([B("🔄 Refresh", f"adm:users:{page}"), B("⬅️ Admin Home", "adm:home")])
+    await edit(target, "\n".join(lines), KB(*buttons))
+
+
+@router.message(Command("users"), IS_ADMIN)
+async def users_cmd(msg: Message, state: FSMContext):
+    await state.clear()
+    total = await users.count_documents({})
+    await msg.answer(f"👥 <b>Total registered users:</b> {total:,}", parse_mode="HTML",
+                     reply_markup=KB([B("📋 Browse Users", "adm:users:0")], [B("🛠 Admin Panel", "adm:home")]))
+
+
+@router.callback_query(F.data.startswith("adm:users:"), IS_ADMIN)
+async def users_page(cq: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await cq.answer()
+    await _render_users(cq, int(cq.data.split(":")[2]))
+
+
+@router.callback_query(F.data.startswith("adm:user:"), IS_ADMIN)
+async def user_detail(cq: CallbackQuery):
+    uid = int(cq.data.split(":")[2])
+    user = await users.find_one({"_id": uid})
+    if not user:
+        return await cq.answer("User not found.", show_alert=True)
+
+    deposits = await txns.find({"user_id": uid, "status": "approved"}).to_list(length=5000)
+    deposit_total = sum(float(item.get("amount") or 0) for item in deposits)
+    adjustments = await orders.find({"user_id": uid, "type": "wallet_adjustment"}).to_list(length=5000)
+    manual_added = sum(float(x.get("amount") or 0) for x in adjustments if x.get("action") == "credit")
+    manual_removed = sum(float(x.get("amount") or 0) for x in adjustments if x.get("action") == "debit")
+    tg_orders = await orders.find({"user_id": uid, "type": "tg"}).to_list(length=5000)
+    s3_orders = await tasks.find({"user_id": uid}).to_list(length=5000)
+    smm_rows = await smm_orders.find({"user_id": uid}).to_list(length=5000)
+    tg_total = sum(float(x.get("price") or 0) for x in tg_orders)
+    s3_total = sum(float(x.get("price") or 0) for x in s3_orders)
+    smm_total = sum(float(x.get("charge") or x.get("price") or 0) for x in smm_rows)
+    joined = user.get("joined")
+    joined_text = joined.strftime("%d %b %Y") if hasattr(joined, "strftime") else "Unknown"
+    text = (
+        f"👤 <b>USER DETAILS</b>\n{SEP}\n"
+        f"<b>Name:</b> {_user_label(user)}\n"
+        f"<b>User ID:</b> <code>{uid}</code>\n"
+        f"<b>Joined:</b> {joined_text}\n"
+        f"<b>Current balance:</b> <b>{fmt_curr(user.get('balance', 0))}</b>\n\n"
+        f"💳 <b>Confirmed deposits:</b> {fmt_curr(deposit_total)}\n"
+        f"➕ <b>Admin credits:</b> {fmt_curr(manual_added)}\n"
+        f"➖ <b>Admin deductions:</b> {fmt_curr(manual_removed)}\n\n"
+        f"🛍 <b>Telegram account purchases:</b> {len(tg_orders)} · {fmt_curr(tg_total)}\n"
+        f"📲 <b>WhatsApp/OTP orders:</b> {len(s3_orders)} · {fmt_curr(s3_total)}\n"
+        f"📈 <b>SMM orders:</b> {len(smm_rows)} · {fmt_curr(smm_total)}\n\n"
+        f"<i>Use /credit {uid} AMOUNT to add funds or /debit {uid} AMOUNT to deduct funds. "
+        "Order totals reflect records currently stored in this bot database.</i>"
+    )
+    await cq.answer()
+    await edit(cq, text, KB([B("➕ Add Balance", f"adm:usercredit:{uid}"),
+                             B("➖ Deduct Balance", f"adm:userdebit:{uid}")],
+                            [B("📋 Back to Users", "adm:users:0"), B("🛠 Admin Home", "adm:home")]))
+
+
+@router.callback_query(F.data.startswith("adm:usercredit:"), IS_ADMIN)
+async def user_credit_prompt(cq: CallbackQuery, state: FSMContext):
+    uid = int(cq.data.split(":")[2])
+    await state.clear()
+    await state.set_state(Adm.credit)
+    await state.update_data(target_uid=uid)
+    await cq.answer()
+    await edit(cq, f"➕ <b>Add balance to user</b> <code>{uid}</code>\nSend the amount in INR (e.g. <code>100</code>).",
+               KB([B("⬅️ Cancel", f"adm:user:{uid}")]))
+
+
+@router.callback_query(F.data.startswith("adm:userdebit:"), IS_ADMIN)
+async def user_debit_prompt(cq: CallbackQuery, state: FSMContext):
+    uid = int(cq.data.split(":")[2])
+    await state.clear()
+    await state.set_state(Adm.debit)
+    await state.update_data(target_uid=uid)
+    await cq.answer()
+    await edit(cq, f"➖ <b>Deduct balance from user</b> <code>{uid}</code>\nSend the amount in INR (e.g. <code>50</code>).",
+               KB([B("⬅️ Cancel", f"adm:user:{uid}")]))
 
 
 # ============================== force-join channels ==============================

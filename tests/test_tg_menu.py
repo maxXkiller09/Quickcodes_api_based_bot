@@ -44,7 +44,8 @@ def test_country_menu_paginates_and_clamps_page(monkeypatch):
 
     assert "Page <b>2/2</b>" in text
     buttons = callbacks(markup)
-    assert "s2:country:C14" in buttons
+    # Equal-price ties use country name as the deterministic secondary sort.
+    assert "s2:country:C09" in buttons
     assert "s2:page:1" not in buttons
     assert "s2:search" in buttons
     assert "back_main" in buttons
@@ -72,3 +73,19 @@ def test_country_search_returns_matching_country(monkeypatch):
     assert "Search results" in text
     assert "s2:country:IN" in callbacks(markup)
     assert "s2:country:US" not in callbacks(markup)
+
+
+
+def test_country_menu_sorts_by_price_low_to_high(monkeypatch):
+    async def fake_s2_view():
+        return [
+            country("US", "United States", price=9.0),
+            country("IN", "India", price=2.0),
+            country("BR", "Brazil", price=5.0),
+        ]
+
+    monkeypatch.setattr(tg, "s2_view", fake_s2_view)
+    _, markup = asyncio.run(tg.build_menu())
+    buttons = callbacks(markup)
+    assert buttons.index("s2:country:IN") < buttons.index("s2:country:BR")
+    assert buttons.index("s2:country:BR") < buttons.index("s2:country:US")
