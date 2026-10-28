@@ -1,4 +1,4 @@
-"""Telegram account prices use the provider rate without reseller markup."""
+"""Telegram account prices apply the configured Server 2 profit percentage."""
 
 import asyncio
 import os
@@ -12,23 +12,23 @@ os.environ.setdefault("BOT_TITLE", "Nexora Test")
 import flows
 
 
-def test_telegram_account_view_uses_provider_price_without_markup(monkeypatch):
+def test_telegram_account_view_applies_configured_markup(monkeypatch):
     async def fake_rows(force=False):
         return [
             {"country_code": "IN", "name": "India", "price": 4.25, "stock": 10},
             {"country_code": "US", "name": "United States", "price": "7.50", "stock": 3},
         ]
 
-    async def unexpected_markup_lookup(_server):
-        raise AssertionError("Telegram account pricing must not apply reseller markup")
+    async def configured_markup(_server):
+        return 10
 
     monkeypatch.setattr(flows, "s2_rows", fake_rows)
-    monkeypatch.setattr(flows, "profit_pct", unexpected_markup_lookup)
+    monkeypatch.setattr(flows, "profit_pct", configured_markup)
 
     result = asyncio.run(flows.s2_view())
 
-    assert result[0]["my_price"] == 4.25
-    assert result[1]["my_price"] == 7.5
+    assert result[0]["my_price"] == 4.68
+    assert result[1]["my_price"] == 8.25
     assert result[0]["price"] == 4.25
     assert result[1]["price"] == "7.50"
 
