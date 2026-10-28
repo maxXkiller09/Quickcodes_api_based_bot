@@ -39,7 +39,7 @@ from config import (BOT_TOKEN, QC_API_BASE, ADMIN_IDS, FORCE_JOIN_CHANNEL_1,
 from db import users, init_indexes, get_settings, utcnow
 import qc
 import notify
-import admin, recharge, fampay, tg, otp, smm, home, sandbox, flows
+import admin, recharge, fampay, tg, otp, smm, home, sandbox, flows, stock_alerts
 
 logging.basicConfig(level=logging.INFO)
 
@@ -240,7 +240,8 @@ async def main():
 
     bg = [asyncio.create_task(otp.otp_loop()), asyncio.create_task(smm.smm_loop()),
           asyncio.create_task(flows.catalog_warm_loop()),
-          asyncio.create_task(flows.s3_refund_retry_loop())]
+          asyncio.create_task(flows.s3_refund_retry_loop()),
+          asyncio.create_task(stock_alerts.monitor_loop())]
     runner = None
     try:
         me = await bot.get_me()
