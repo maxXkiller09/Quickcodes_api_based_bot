@@ -52,6 +52,8 @@ async def build_menu(page=0, query=None):
         q = query.lower().strip()
         rows = [r for r in rows if q in r["country_code"].lower() or q in r["name"].lower()
                 or q in flag_for(strip_flags(r["name"])) or q == r["country_code"].lower()]
+    # Cheapest Telegram account countries first, including search results.
+    rows.sort(key=lambda r: (float(r.get("my_price") or 0), str(r.get("name") or "").lower()))
         if not rows:
             return (f"❌ <b>No countries found for:</b> <code>{esc(query)}</code>",
                     KB([B("🔎 Search Country", "s2:search")], [B("🏠 Nexora Home", "back_main")]))
