@@ -48,11 +48,11 @@ async def notification_off(message: Message):
         )
     if service.lower() == "all":
         await stock_alerts.notification_preferences.update_one(
-            {"user_id": message.from_user.id},
+            {"user_id": "global"},
             {"$addToSet": {"disabled_services": "*"}}, upsert=True
         )
     else:
-        await stock_alerts.set_service_notifications(message.from_user.id, service, False)
+        await stock_alerts.set_service_notifications("global", service, False)
     await message.answer(f"🔕 Restock notifications turned off for <b>{esc(service)}</b>.")
 
 
@@ -77,7 +77,7 @@ async def notification_on(message: Message):
             {"$set": {"disabled_services": []}}, upsert=True
         )
     else:
-        await stock_alerts.set_service_notifications(message.from_user.id, service, True)
+        await stock_alerts.set_service_notifications("global", service, True)
     await message.answer(f"🔔 Restock notifications turned on for <b>{esc(service)}</b>.")
 
 
@@ -91,7 +91,7 @@ async def mute_stock_notifications(cq: CallbackQuery):
     else:
         catalog = await __import__("flows").s3_catalog() or {}
         service_name = str((catalog.get(service_key) or {}).get("name") or service_key)
-    await stock_alerts.set_service_notifications(cq.from_user.id, service_name, False)
+    await stock_alerts.set_service_notifications("global", service_name, False)
     await cq.answer(f"🔕 Notifications off: {service_name}", show_alert=True)
 
 
