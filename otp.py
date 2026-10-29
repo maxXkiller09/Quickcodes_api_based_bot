@@ -33,6 +33,7 @@ from flows import (s3_catalog, s3_countries, s3_offers, buy_s3, s3_poll, s3_canc
 from flags import flag_for
 from notify import get_bot
 from fampay import send_sale_log
+import stock_alerts
 from utils import B, KB, esc, fmt_curr, fmt_short, edit, is_spamming, chunk, NOPREV
 
 router = Router()
@@ -212,7 +213,7 @@ async def render_countries(target, sid, page=0, query=None, full=False):
     title = esc(svc["name"])
     back = back_for(svc["name"])
     await edit(target, f"⏳ <i>Fetching live rates for {title}…</i>")
-    rows = await s3_countries(sid, full=full)
+    rows = await s3_countries(sid, full=full, include_empty=full)
     if rows is None:
         return await edit(target, f"<b>Service: {title}</b>\n{LINE}\n{BUSY_TXT}", busy_kb(f"s3r:{sid}", back))
     if query:
@@ -239,8 +240,11 @@ async def render_countries(target, sid, page=0, query=None, full=False):
     if norm(svc["name"]) == "telegram":
         text = TELEGRAM_NOTE + "\n\n" + text
     pfx = "s3a" if full else "s3s"
-    kb_rows = chunk([B(f"{flag_for(r['name'])} {r['name'][:20]} · {fmt_short(r['my_price'])}", f"s3c:{sid}:{r['country']}")
-                     for r in shown], 2)
+    kb_rows = chunk([
+        B(f"{'🟢' if int(r.get('stock', 0) or 0) > 0 else '🔴'} {flag_for(r['name'])} {r['name'][:16]} · {fmt_short(r['my_price'])}",
+          f"s3c:{sid}:{r['country']}")
+        for r in shown
+    ], 2)
     if not query and pages > 1:
         nav = []
         if page > 0:
@@ -317,11 +321,19 @@ async def render_operators(target, sid, cid, note=None):
         return await edit(target, BUSY_TXT, busy_kb(f"s3c:{sid}:{cid}", f"s3s:{sid}:0"))
     cname, ops = off
     if not ops:
-        return await render_countries(target, sid, 0)
+        text = (f"📶 <b>{esc(svc['name'])}</b> · {flag_for(cname)} {esc(cname)}\n{LINE}\n"
+                "📭 <b>Currently out of stock</b>\n"
+                "Turn on a notification and Nexora will alert you when numbers return.")
+        return await edit(target, text, KB(
+            [B("🔔 Notify when available", f"stock3:subscribe:{sid}:{cid}")],
+            [B("🔄 Refresh", f"s3rc:{sid}:{cid}")],
+            [B("🌍 Change Country", f"s3s:{sid}:0")],
+            [B("🏠 Nexora Home", "back_main")],
+        ))
     text = (f"📶 <b>Select Operator</b>\n{LINE}\n"
             f"• <b>Service:</b> {esc(svc['name'])}\n"
             f"• <b>Country:</b> {flag_for(cname)} {esc(cname)}\n"
-            "<blockquote>Prices &amp; stock are live. 🔥 = best price. If an operator runs out, you will be told and brought back here.</blockquote>")
+            "<blockquote>Prices &amp; stock are live. 🔥 = best price. Get a notification when this country's numbers return after stock reaches zero.</blockquote>")
     if note:
         text = f"{note}\n\n{text}"
     rows = []
@@ -330,6 +342,7 @@ async def render_operators(target, sid, cid, note=None):
         best = "🔥 " if i == 0 and len(ops) > 1 else ""
         rows.append([B(f"{best}{stock_dot(o['stock'])} Operator {o['operator']} · {fmt_short(o['my_price'])} · {stock} left",
                        f"s3o:{sid}:{cid}:{o['operator']}")])
+    rows.append([B("🔔 Notify when unavailable", f"stock3:subscribe:{sid}:{cid}")])
     rows.append([B("🔄 Refresh", f"s3rc:{sid}:{cid}"), B("🌍 Change Country", f"s3s:{sid}:0")])
     rows.append([B("⬅️ Back", f"s3s:{sid}:0")])
     await edit(target, text, KB(*rows))
@@ -351,6 +364,33 @@ async def operators_refresh(cq: CallbackQuery):
     drop_s3_cache(sid)
     await cq.answer("🔄 Updated")
     await render_operators(cq, sid, cid)
+
+@router.callback_query(F.data.startswith("stock3:subscribe:"))
+async def subscribe_s3_stock_alert(cq: CallbackQuery):
+    parts = cq.data.split(":", 3)
+    if len(parts) != 4:
+        return await cq.answer("Invalid notification request.", show_alert=True)
+    _, _, sid, cid = parts
+    if not sid or not cid:
+        return await cq.answer("Invalid service or country.", show_alert=True)
+    try:
+        await stock_alerts.subscribe_s3(cq.from_user.id, sid, cid)
+    except Exception:
+        return await cq.answer("Could not enable notification. Try again.", show_alert=True)
+    await cq.answer("🔔 Notification enabled for this service and country!", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("stock3:stop:"))
+async def stop_s3_stock_alert(cq: CallbackQuery):
+    parts = cq.data.split(":", 3)
+    if len(parts) != 4:
+        return await cq.answer("Invalid notification request.", show_alert=True)
+    _, _, sid, cid = parts
+    try:
+        await stock_alerts.unsubscribe_s3(cq.from_user.id, sid, cid)
+    except Exception:
+        return await cq.answer("Could not stop notification. Try again.", show_alert=True)
+    await cq.answer("🔕 Notification stopped.", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("s3o:"))
