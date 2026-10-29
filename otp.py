@@ -617,4 +617,4 @@ async def otp_loop():
             raise
         except Exception as e:
             print(f"[otp-loop] {e!r}")
-        await asyncio.sleep(max(6, min(len(active) * 1.1, 30)) if active else 6)
+        await asyncio.sleep(max(8, min(len(active) * 1.1, 30)) if active else 15)
