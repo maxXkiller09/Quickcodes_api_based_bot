@@ -135,7 +135,35 @@ class UserMiddleware(BaseMiddleware):
 
 
 class ForceJoinMiddleware(BaseMiddleware):
-    """Require membership in both configured channels before using the bot."""
+    """Require membership in both configured channels, with a short membership cache."""
+    CACHE_TTL = 30
+    CACHE_LIMIT = 20000
+
+    def __init__(self):
+        self._membership_cache = {}
+
+    def _cached_membership(self, key):
+        cached = self._membership_cache.get(key)
+        if cached is None:
+            return None
+        expires_at, is_member = cached
+        if expires_at <= asyncio.get_running_loop().time():
+            self._membership_cache.pop(key, None)
+            return None
+        return is_member
+
+    def _store_membership(self, key, is_member):
+        now = asyncio.get_running_loop().time()
+        if len(self._membership_cache) >= self.CACHE_LIMIT:
+            # Opportunistically discard expired entries before bounding memory.
+            self._membership_cache = {
+                k: value for k, value in self._membership_cache.items()
+                if value[0] > now
+            }
+            if len(self._membership_cache) >= self.CACHE_LIMIT:
+                self._membership_cache.clear()
+        self._membership_cache[key] = (now + self.CACHE_TTL, is_member)
+
     async def __call__(self, handler, event, data):
         user = getattr(event, "from_user", None)
         if (not user or user.is_bot or user.id in ADMIN_IDS
@@ -157,11 +185,18 @@ class ForceJoinMiddleware(BaseMiddleware):
         for chat_id, invite_link, label in channels:
             try:
                 chat_ref = int(chat_id) if re.fullmatch(r"-?\d+", str(chat_id)) else chat_id
-                member = await bot.get_chat_member(chat_id=chat_ref, user_id=user.id)
-                if member.status not in (ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR,
-                                         ChatMemberStatus.CREATOR) and not (
-                    member.status == ChatMemberStatus.RESTRICTED and getattr(member, "is_member", False)
-                ):
+                cache_key = (str(chat_ref), user.id)
+                is_member = self._cached_membership(cache_key)
+                if is_member is None:
+                    member = await bot.get_chat_member(chat_id=chat_ref, user_id=user.id)
+                    is_member = (
+                        member.status in (ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR,
+                                          ChatMemberStatus.CREATOR)
+                        or (member.status == ChatMemberStatus.RESTRICTED
+                            and getattr(member, "is_member", False))
+                    )
+                    self._store_membership(cache_key, is_member)
+                if not is_member:
                     missing.append((invite_link, label))
             except Exception as exc:
                 logging.warning("Force-join check failed for %s: %r", label, exc)
