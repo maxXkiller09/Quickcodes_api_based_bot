@@ -112,18 +112,19 @@ async def unsubscribe_s3(user_id: int, service_id: str, country_code: str):
 
 
 async def set_service_notifications(user_id: int, service_name: str, enabled: bool):
-    """Notifications are ON by default; store only per-user service opt-outs."""
+    """Set a service preference; admin calls use the shared global policy."""
     await init_stock_alerts()
     name = " ".join(str(service_name or "").strip().lower().replace("-", " ").split())
     if not name:
         return
+    key = "global" if str(user_id).lower() == "global" else int(user_id)
     if enabled:
         await notification_preferences.update_one(
-            {"user_id": int(user_id)}, {"$pull": {"disabled_services": name}}, upsert=True
+            {"user_id": key}, {"$pull": {"disabled_services": name}}, upsert=True
         )
     else:
         await notification_preferences.update_one(
-            {"user_id": int(user_id)}, {"$addToSet": {"disabled_services": name}}, upsert=True
+            {"user_id": key}, {"$addToSet": {"disabled_services": name}}, upsert=True
         )
 
 
