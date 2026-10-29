@@ -63,6 +63,7 @@ async def init_indexes():
     await tasks.create_index("order_id", unique=True)
     await tasks.create_index("status")
     await smm_orders.create_index([("user_id", 1), ("order_id", 1)])
+    await smm_orders.create_index([("date", -1)])
     await orders.create_index([("user_id", 1), ("date", -1)])
     await txns.create_index("status")
 
