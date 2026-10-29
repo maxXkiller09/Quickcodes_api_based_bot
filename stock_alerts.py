@@ -184,8 +184,11 @@ async def monitor_loop(interval: int = 180):
             # Server 2: provider country endpoint includes stock counts, including zero-stock rows.
             rows = await s2_view(force=True)
             if rows is not None:
+                seen_s2_codes = set()
                 for row in rows:
                     code = str(row.get("country_code") or "").strip()
+                    if code:
+                        seen_s2_codes.add(code)
                     if not code:
                         continue
                     try:
@@ -218,6 +221,18 @@ async def monitor_loop(interval: int = 180):
                     ])
                     await _broadcast_restock("Telegram Accounts", text, markup)
 
+                # Some provider endpoints omit zero-stock countries entirely.
+                # Treat a previously known country missing from a successful response as zero,
+                # so its next appearance can trigger a genuine restock transition.
+                known_s2 = snapshots.find({})
+                async for known in known_s2:
+                    known_code = str(known.get("country_code") or "").strip()
+                    if known_code and known_code not in seen_s2_codes and int(known.get("stock", 0) or 0) > 0:
+                        await snapshots.update_one(
+                            {"country_code": known_code},
+                            {"$set": {"stock": 0}},
+                        )
+
             # Server 3: check each catalog service, so WhatsApp and every Apps OTP service are covered.
             catalog = await s3_catalog() or {}
             for sid, service in catalog.items():
@@ -225,8 +240,11 @@ async def monitor_loop(interval: int = 180):
                 countries = await s3_countries(str(sid), full=True, force=True, include_empty=True)
                 if countries is None:
                     continue
+                seen_s3_codes = set()
                 for row in countries:
                     code = str(row.get("country") or "").strip()
+                    if code:
+                        seen_s3_codes.add(code)
                     if not code:
                         continue
                     try:
@@ -258,6 +276,16 @@ async def monitor_loop(interval: int = 180):
                         [InlineKeyboardButton(text=f"🔕 Turn off {service_name[:30]}", callback_data=f"stock:mute:{sid}")],
                     ])
                     await _broadcast_restock(service_name, text, markup)
+
+                # Also handle APIs that only return countries currently in stock.
+                known_s3 = s3_snapshots.find({"service_id": str(sid)})
+                async for known in known_s3:
+                    known_code = str(known.get("country_code") or "").strip()
+                    if known_code and known_code not in seen_s3_codes and int(known.get("stock", 0) or 0) > 0:
+                        await s3_snapshots.update_one(
+                            {"service_id": str(sid), "country_code": known_code},
+                            {"$set": {"stock": 0}},
+                        )
             await asyncio.sleep(max(180, int(interval)))
         except asyncio.CancelledError:
             raise
