@@ -131,6 +131,8 @@ async def service_notifications_enabled(user_id: int, service_name: str) -> bool
     name = " ".join(str(service_name or "").strip().lower().replace("-", " ").split())
     pref = await notification_preferences.find_one({"user_id": int(user_id)}, {"disabled_services": 1}) or {}
     disabled = pref.get("disabled_services") or []
+    if "*" in disabled:
+        return False
     aliases = {name}
     if name in {"telegram accounts", "telegram account", "server 2", "s2"}:
         aliases.update({"telegram accounts", "telegram account", "server 2", "s2"})
