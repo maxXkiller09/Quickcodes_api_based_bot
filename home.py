@@ -35,10 +35,14 @@ async def notification_off(message: Message):
     service = (message.text or "").partition(" ")[2].strip()
     if not service:
         return await message.answer(
-            "🔔 <b>Notification settings</b>\\n"
-            "Use: <code>/notificationoff service name</code>\\n"
-            "Example: <code>/notificationoff WhatsApp</code>\\n"
-            "To mute everything: <code>/notificationoff all</code>"
+            "🔔 <b>RESTOCK NOTIFICATIONS</b>\n\n"
+            "Turn off alerts for one service:\n"
+            "• <code>/notificationoff WhatsApp</code>\n"
+            "• <code>/notificationoff Telegram Accounts</code>\n"
+            "• <code>/notificationoff Instagram</code>\n\n"
+            "Turn off alerts for all services:\n"
+            "• <code>/notificationoff all</code>\n\n"
+            "Turn alerts back on anytime with <code>/notificationon</code>."
         )
     if service.lower() == "all":
         await stock_alerts.notification_preferences.update_one(
@@ -55,10 +59,13 @@ async def notification_on(message: Message):
     service = (message.text or "").partition(" ")[2].strip()
     if not service:
         return await message.answer(
-            "🔔 <b>Notification settings</b>\\n"
-            "Use: <code>/notificationon service name</code>\\n"
-            "Example: <code>/notificationon WhatsApp</code>\\n"
-            "To enable everything: <code>/notificationon all</code>"
+            "🔔 <b>RESTOCK NOTIFICATIONS</b>\n\n"
+            "Turn on alerts for one service:\n"
+            "• <code>/notificationon WhatsApp</code>\n"
+            "• <code>/notificationon Telegram Accounts</code>\n"
+            "• <code>/notificationon Instagram</code>\n\n"
+            "Turn on alerts for all services:\n"
+            "• <code>/notificationon all</code>"
         )
     if service.lower() == "all":
         await stock_alerts.notification_preferences.update_one(
