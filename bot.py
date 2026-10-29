@@ -80,13 +80,19 @@ class ActivityMiddleware(BaseMiddleware):
                     else:
                         detail = f"Update type: {type(event).__name__}"
                     kind = "MESSAGE"
-                await fampay.send_log(
+                log_text = (
                     f"🧾 <b>BOT ACTIVITY · {kind}</b>\n"
                     f"👤 {escape(user.full_name or 'Unknown')} "
                     f"{('@' + escape(user.username)) if user.username else ''} "
                     f"(<code>{user.id}</code>)\n"
                     f"💬 Chat: <code>{chat_id}</code>\n"
                     f"📌 {escape(detail)}"
+                )
+                # Activity logging must never delay the user's command/callback.
+                task = asyncio.create_task(fampay.send_log(log_text))
+                task.add_done_callback(
+                    lambda done: logging.warning("Activity log task failed: %r", done.exception())
+                    if not done.cancelled() and done.exception() else None
                 )
             except Exception:
                 # Logging failures must never break user-facing bot handlers.
