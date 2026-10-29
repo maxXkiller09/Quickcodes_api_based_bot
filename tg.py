@@ -25,6 +25,7 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, CallbackQuery
+from config import ADMIN_IDS
 from db import service_on, get_balance
 from flows import s2_view, buy_tg, tg_code
 from flags import flag_for, strip_flags
@@ -211,6 +212,8 @@ async def confirm(cq: CallbackQuery):
 
 @router.callback_query(F.data.startswith("stock:subscribe:"))
 async def subscribe_stock_alert(cq: CallbackQuery):
+    if cq.from_user.id not in ADMIN_IDS:
+        return await cq.answer("⛔ Only bot admins/owner can change notification settings.", show_alert=True)
     code = cq.data.split(":", 2)[2].strip()
     if not code or len(code) > 32:
         return await cq.answer("Invalid country.", show_alert=True)
@@ -223,6 +226,8 @@ async def subscribe_stock_alert(cq: CallbackQuery):
 
 @router.callback_query(F.data.startswith("stock:stop:"))
 async def stop_stock_alert(cq: CallbackQuery):
+    if cq.from_user.id not in ADMIN_IDS:
+        return await cq.answer("⛔ Only bot admins/owner can change notification settings.", show_alert=True)
     code = cq.data.split(":", 2)[2].strip()
     try:
         await stock_alerts.unsubscribe(cq.from_user.id, code)
