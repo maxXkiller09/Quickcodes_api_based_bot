@@ -73,7 +73,7 @@ async def notification_on(message: Message):
         )
     if service.lower() == "all":
         await stock_alerts.notification_preferences.update_one(
-            {"user_id": message.from_user.id},
+            {"user_id": "global"},
             {"$set": {"disabled_services": []}}, upsert=True
         )
     else:
