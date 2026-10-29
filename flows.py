@@ -57,7 +57,7 @@ async def _ambiguous(server_name, uid, what, d):
 # =====================================================================
 # Catalog caches keep service menus responsive while limiting provider API traffic.
 S2_COUNTRIES_CACHE_TTL = 60
-S3_CATALOG_CACHE_TTL = 1800
+S3_CATALOG_CACHE_TTL = 300
 S3_COUNTRIES_CACHE_TTL = 180
 S3_OFFERS_CACHE_TTL = 60
 SMM_CATALOG_CACHE_TTL = 1800
