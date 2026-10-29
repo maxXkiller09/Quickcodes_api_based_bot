@@ -7,7 +7,7 @@
 # Authorized modifications retain original author and brand credits.
 # ============================================================================
 
-"""Low-frequency Server 2 restock alerts for users who opt in."""
+"""Five-minute Server 2/3 restock monitoring and user alerts."""
 import asyncio
 import logging
 from html import escape
@@ -186,10 +186,10 @@ async def stop_all(user_id: int):
     await s3_subscriptions.update_many({"user_id": int(user_id), "active": True}, {"$set": {"active": False}})
 
 
-async def monitor_loop(interval: int = 180):
+async def monitor_loop(interval: int = 300):
     """Broadcast stock transitions to all users by default; users may mute each service."""
     await init_stock_alerts()
-    logging.info("Restock monitor started; interval=%ss; notifications default ON", max(180, int(interval)))
+    logging.info("Restock monitor started; interval=%ss; notifications default ON", max(300, int(interval)))
     while True:
         try:
             checked_s2 = checked_s3 = alerts = 0
@@ -303,9 +303,9 @@ async def monitor_loop(interval: int = 180):
                             {"$set": {"stock": 0}},
                         )
             logging.info("Restock poll complete: s2_countries=%d s3_countries=%d alerts=%d", checked_s2, checked_s3, alerts)
-            await asyncio.sleep(max(180, int(interval)))
+            await asyncio.sleep(max(300, int(interval)))
         except asyncio.CancelledError:
             raise
         except Exception:
             logging.exception("Restock monitor iteration failed")
-            await asyncio.sleep(max(180, int(interval)))
+            await asyncio.sleep(max(300, int(interval)))
