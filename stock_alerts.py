@@ -144,18 +144,26 @@ async def service_notifications_enabled(user_id: int, service_name: str) -> bool
 
 
 async def _broadcast_restock(service_name: str, text: str, markup):
-    """Send a live restock alert to every known bot user unless that service is muted."""
-    cursor = users.find({}, {"_id": 1})
+    """Send a restock alert to every known bot user unless that service is muted."""
     bot = notify.get_bot()
-    async for user in cursor:
+    if bot is None:
+        logging.error("Restock alert skipped: Telegram bot is not initialized")
+        return
+    sent = skipped = failed = 0
+    async for user in users.find({}, {"_id": 1}):
         uid = user.get("_id")
         if uid is None:
             continue
         try:
-            if await service_notifications_enabled(int(uid), service_name):
-                await bot.send_message(int(uid), text, reply_markup=markup, parse_mode="HTML")
+            if not await service_notifications_enabled(int(uid), service_name):
+                skipped += 1
+                continue
+            await bot.send_message(int(uid), text, reply_markup=markup, parse_mode="HTML")
+            sent += 1
         except Exception as exc:
-            logging.info("Restock broadcast failed for user %s: %r", uid, exc)
+            failed += 1
+            logging.warning("Restock delivery failed service=%s user=%s error=%r", service_name, uid, exc)
+    logging.info("Restock alert broadcast service=%s sent=%d muted=%d failed=%d", service_name, sent, skipped, failed)
 
 
 def is_restock_transition(previous_stock, current_stock) -> bool:
@@ -179,8 +187,10 @@ async def stop_all(user_id: int):
 async def monitor_loop(interval: int = 180):
     """Broadcast stock transitions to all users by default; users may mute each service."""
     await init_stock_alerts()
+    logging.info("Restock monitor started; interval=%ss; notifications default ON", max(180, int(interval)))
     while True:
         try:
+            checked_s2 = checked_s3 = alerts = 0
             # Server 2: provider country endpoint includes stock counts, including zero-stock rows.
             rows = await s2_view(force=True)
             if rows is not None:
@@ -195,6 +205,7 @@ async def monitor_loop(interval: int = 180):
                         stock = max(0, int(row.get("stock", 0) or 0))
                     except (TypeError, ValueError):
                         continue
+                    checked_s2 += 1
                     old = await snapshots.find_one({"country_code": code})
                     await snapshots.update_one(
                         {"country_code": code},
@@ -219,6 +230,7 @@ async def monitor_loop(interval: int = 180):
                         [InlineKeyboardButton(text="🛒 Buy Now", callback_data=f"s2:country:{code}")],
                         [InlineKeyboardButton(text="🔕 Turn off Telegram Accounts", callback_data="stock:mute:s2")],
                     ])
+                    alerts += 1
                     await _broadcast_restock("Telegram Accounts", text, markup)
 
                 # Some provider endpoints omit zero-stock countries entirely.
@@ -251,6 +263,7 @@ async def monitor_loop(interval: int = 180):
                         stock = max(0, int(row.get("stock", 0) or 0))
                     except (TypeError, ValueError):
                         continue
+                    checked_s3 += 1
                     old = await s3_snapshots.find_one({"service_id": str(sid), "country_code": code})
                     name_raw = str(row.get("name") or code)
                     price = float(row.get("my_price") or 0)
@@ -275,6 +288,7 @@ async def monitor_loop(interval: int = 180):
                         [InlineKeyboardButton(text="🛒 View Numbers", callback_data=f"s3c:{sid}:{code}")],
                         [InlineKeyboardButton(text=f"🔕 Turn off {service_name[:30]}", callback_data=f"stock:mute:{sid}")],
                     ])
+                    alerts += 1
                     await _broadcast_restock(service_name, text, markup)
 
                 # Also handle APIs that only return countries currently in stock.
@@ -286,6 +300,7 @@ async def monitor_loop(interval: int = 180):
                             {"service_id": str(sid), "country_code": known_code},
                             {"$set": {"stock": 0}},
                         )
+            logging.info("Restock poll complete: s2_countries=%d s3_countries=%d alerts=%d", checked_s2, checked_s3, alerts)
             await asyncio.sleep(max(180, int(interval)))
         except asyncio.CancelledError:
             raise
