@@ -13,7 +13,7 @@ import logging
 from html import escape
 
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from db import db
+from db import db, users
 from flows import s2_view, s3_catalog, s3_countries
 import notify
 
@@ -21,6 +21,7 @@ subscriptions = db["stock_alert_subscriptions"]
 snapshots = db["stock_alert_snapshots"]
 s3_subscriptions = db["stock_alert_s3_subscriptions"]
 s3_snapshots = db["stock_alert_s3_snapshots"]
+notification_preferences = db["notification_preferences"]
 _initialized = False
 
 
@@ -110,6 +111,51 @@ async def unsubscribe_s3(user_id: int, service_id: str, country_code: str):
     )
 
 
+async def set_service_notifications(user_id: int, service_name: str, enabled: bool):
+    """Notifications are ON by default; store only per-user service opt-outs."""
+    await init_stock_alerts()
+    name = " ".join(str(service_name or "").strip().lower().replace("-", " ").split())
+    if not name:
+        return
+    if enabled:
+        await notification_preferences.update_one(
+            {"user_id": int(user_id)}, {"$pull": {"disabled_services": name}}, upsert=True
+        )
+    else:
+        await notification_preferences.update_one(
+            {"user_id": int(user_id)}, {"$addToSet": {"disabled_services": name}}, upsert=True
+        )
+
+
+async def service_notifications_enabled(user_id: int, service_name: str) -> bool:
+    name = " ".join(str(service_name or "").strip().lower().replace("-", " ").split())
+    pref = await notification_preferences.find_one({"user_id": int(user_id)}, {"disabled_services": 1}) or {}
+    disabled = pref.get("disabled_services") or []
+    aliases = {name}
+    if name in {"telegram accounts", "telegram account", "server 2", "s2"}:
+        aliases.update({"telegram accounts", "telegram account", "server 2", "s2"})
+    if name in {"whatsapp", "whatsapp accounts", "server 3", "s3"}:
+        aliases.update({"whatsapp", "whatsapp accounts"})
+    return not bool(aliases.intersection(
+        " ".join(str(x).strip().lower().replace("-", " ").split()) for x in disabled
+    ))
+
+
+async def _broadcast_restock(service_name: str, text: str, markup):
+    """Send a live restock alert to every known bot user unless that service is muted."""
+    cursor = users.find({}, {"_id": 1})
+    bot = notify.get_bot()
+    async for user in cursor:
+        uid = user.get("_id")
+        if uid is None:
+            continue
+        try:
+            if await service_notifications_enabled(int(uid), service_name):
+                await bot.send_message(int(uid), text, reply_markup=markup, parse_mode="HTML")
+        except Exception as exc:
+            logging.info("Restock broadcast failed for user %s: %r", uid, exc)
+
+
 def is_restock_transition(previous_stock, current_stock) -> bool:
     """Return true only for a known zero-to-positive stock transition."""
     if previous_stock is None:
@@ -128,109 +174,91 @@ async def stop_all(user_id: int):
     await s3_subscriptions.update_many({"user_id": int(user_id), "active": True}, {"$set": {"active": False}})
 
 
-async def monitor_loop(interval: int = 90):
-    """Poll only subscribed services; alert on known zero-to-positive stock transitions."""
+async def monitor_loop(interval: int = 180):
+    """Broadcast stock transitions to all users by default; users may mute each service."""
     await init_stock_alerts()
     while True:
         try:
-            if await subscriptions.count_documents({"active": True}, limit=1):
-                rows = await s2_view(force=True)
-                if rows is not None:
-                    for row in rows:
-                        code = str(row.get("country_code") or "").strip()
-                        if not code:
-                            continue
-                        try:
-                            stock = max(0, int(row.get("stock", 0) or 0))
-                        except (TypeError, ValueError):
-                            continue
-                        old = await snapshots.find_one({"country_code": code})
-                        await snapshots.update_one(
-                            {"country_code": code},
-                            {"$set": {"stock": stock, "name": str(row.get("name") or code),
-                                      "price": float(row.get("my_price") or 0)}},
-                            upsert=True,
-                        )
-                        if not is_restock_transition(old.get("stock") if old else None, stock):
-                            continue
-                        subs = subscriptions.find({"country_code": code, "active": True})
-                        name = escape(str(row.get("name") or code))
-                        price = float(row.get("my_price") or 0)
-                        text = (
-                            "🔔 <b>Back in Stock!</b>\\n"
-                            "━━━━━━━━━━━━━━━━━━━━\\n"
-                            f"🌍 <b>Country:</b> {name}\\n"
-                            f"📊 <b>Stock:</b> {stock} account(s)\\n"
-                            f"🏷️ <b>Price:</b> ₹{price:g}\\n\\n"
-                            "<i>Grab it before it runs out!</i>"
-                        )
-                        markup = InlineKeyboardMarkup(inline_keyboard=[
-                            [InlineKeyboardButton(text="🛒 Buy Now", callback_data=f"s2:country:{code}")],
-                            [InlineKeyboardButton(text="🔕 Stop Notification", callback_data=f"stock:stop:{code}")],
-                        ])
-                        async for sub in subs:
-                            try:
-                                await notify.get_bot().send_message(int(sub["user_id"]), text,
-                                                                    reply_markup=markup, parse_mode="HTML")
-                            except Exception as exc:
-                                logging.info("Restock alert failed for user %s: %r", sub.get("user_id"), exc)
-
-            active_s3 = s3_subscriptions.find({"active": True})
-            service_ids = set()
-            async for sub in active_s3:
-                if sub.get("service_id"):
-                    service_ids.add(str(sub["service_id"]))
-            if service_ids:
-                cat = await s3_catalog() or {}
-                for sid in service_ids:
-                    rows = await s3_countries(sid, full=True, force=True, include_empty=True)
-                    if rows is None:
+            # Server 2: provider country endpoint includes stock counts, including zero-stock rows.
+            rows = await s2_view(force=True)
+            if rows is not None:
+                for row in rows:
+                    code = str(row.get("country_code") or "").strip()
+                    if not code:
                         continue
-                    rows_by_code = {str(r.get("country") or "").strip(): r for r in rows}
-                    active_for_service = s3_subscriptions.find({"active": True, "service_id": sid})
-                    async for sub in active_for_service:
-                        code = str(sub.get("country_code") or "").strip()
-                        row = rows_by_code.get(code)
-                        if not row:
-                            continue
-                        try:
-                            stock = max(0, int(row.get("stock", 0) or 0))
-                        except (TypeError, ValueError):
-                            continue
-                        old = await s3_snapshots.find_one({"service_id": sid, "country_code": code})
-                        name_raw = str(row.get("name") or code)
-                        price = float(row.get("my_price") or 0)
-                        await s3_snapshots.update_one(
-                            {"service_id": sid, "country_code": code},
-                            {"$set": {"stock": stock, "name": name_raw, "price": price},
-                             "$setOnInsert": {"service_id": sid, "country_code": code}},
-                            upsert=True,
-                        )
-                        if not is_restock_transition(old.get("stock") if old else None, stock):
-                            continue
-                        service_name = escape(str((cat.get(sid) or {}).get("name") or "OTP Service"))
-                        country_name = escape(name_raw)
-                        text = (
-                            "🔔 <b>Back in Stock!</b>\\n"
-                            "━━━━━━━━━━━━━━━━━━━━\\n"
-                            f"📱 <b>Service:</b> {service_name}\\n"
-                            f"🌍 <b>Country:</b> {country_name}\\n"
-                            f"📊 <b>Stock:</b> {stock} number(s)\\n"
-                            f"🏷️ <b>Starting price:</b> ₹{price:g}\\n\\n"
-                            "<i>Numbers are available again. Check the live offer before buying.</i>"
-                        )
-                        markup = InlineKeyboardMarkup(inline_keyboard=[
-                            [InlineKeyboardButton(text="🛒 View Numbers", callback_data=f"s3c:{sid}:{code}")],
-                            [InlineKeyboardButton(text="🔕 Stop Notification", callback_data=f"stock3:stop:{sid}:{code}")],
-                        ])
-                        try:
-                            await notify.get_bot().send_message(int(sub["user_id"]), text,
-                                                                reply_markup=markup, parse_mode="HTML")
-                        except Exception as exc:
-                            logging.info("Server 3 restock alert failed for user %s: %r", sub.get("user_id"), exc)
-            await asyncio.sleep(max(60, int(interval)))
+                    try:
+                        stock = max(0, int(row.get("stock", 0) or 0))
+                    except (TypeError, ValueError):
+                        continue
+                    old = await snapshots.find_one({"country_code": code})
+                    await snapshots.update_one(
+                        {"country_code": code},
+                        {"$set": {"stock": stock, "name": str(row.get("name") or code),
+                                  "price": float(row.get("my_price") or 0)}},
+                        upsert=True,
+                    )
+                    if not is_restock_transition(old.get("stock") if old else None, stock):
+                        continue
+                    name_raw = str(row.get("name") or code)
+                    name = escape(name_raw)
+                    price = float(row.get("my_price") or 0)
+                    text = (
+                        "🔔 <b>Back in Stock!</b>\\n"
+                        "━━━━━━━━━━━━━━━━━━━━\\n"
+                        f"🌍 <b>Country:</b> {name}\\n"
+                        f"📊 <b>Stock:</b> {stock} accounts\\n"
+                        f"🏷️ <b>Price:</b> ₹{price:g}\\n\\n"
+                        "<i>Grab it before it runs out!</i>"
+                    )
+                    markup = InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="🛒 Buy Now", callback_data=f"s2:country:{code}")],
+                        [InlineKeyboardButton(text="🔕 Turn off Telegram Accounts", callback_data="stock:mute:s2")],
+                    ])
+                    await _broadcast_restock("Telegram Accounts", text, markup)
+
+            # Server 3: check each catalog service, so WhatsApp and every Apps OTP service are covered.
+            catalog = await s3_catalog() or {}
+            for sid, service in catalog.items():
+                service_name = str(service.get("name") or f"Service {sid}")
+                countries = await s3_countries(str(sid), full=True, force=True, include_empty=True)
+                if countries is None:
+                    continue
+                for row in countries:
+                    code = str(row.get("country") or "").strip()
+                    if not code:
+                        continue
+                    try:
+                        stock = max(0, int(row.get("stock", 0) or 0))
+                    except (TypeError, ValueError):
+                        continue
+                    old = await s3_snapshots.find_one({"service_id": str(sid), "country_code": code})
+                    name_raw = str(row.get("name") or code)
+                    price = float(row.get("my_price") or 0)
+                    await s3_snapshots.update_one(
+                        {"service_id": str(sid), "country_code": code},
+                        {"$set": {"stock": stock, "name": name_raw, "price": price},
+                         "$setOnInsert": {"service_id": str(sid), "country_code": code}},
+                        upsert=True,
+                    )
+                    if not is_restock_transition(old.get("stock") if old else None, stock):
+                        continue
+                    text = (
+                        "🔔 <b>Back in Stock!</b>\\n"
+                        "━━━━━━━━━━━━━━━━━━━━\\n"
+                        f"📱 <b>Service:</b> {escape(service_name)}\\n"
+                        f"🌍 <b>Country:</b> {escape(name_raw)}\\n"
+                        f"📊 <b>Stock:</b> {stock} numbers\\n"
+                        f"🏷️ <b>Starting price:</b> ₹{price:g}\\n\\n"
+                        "<i>Numbers are available again. Check live offers before buying.</i>"
+                    )
+                    markup = InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="🛒 View Numbers", callback_data=f"s3c:{sid}:{code}")],
+                        [InlineKeyboardButton(text=f"🔕 Turn off {service_name[:30]}", callback_data=f"stock:mute:{sid}")],
+                    ])
+                    await _broadcast_restock(service_name, text, markup)
+            await asyncio.sleep(max(180, int(interval)))
         except asyncio.CancelledError:
             raise
         except Exception:
             logging.exception("Restock monitor iteration failed")
-            await asyncio.sleep(max(60, int(interval)))
+            await asyncio.sleep(max(180, int(interval)))
