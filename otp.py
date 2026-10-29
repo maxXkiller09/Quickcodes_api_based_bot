@@ -27,6 +27,7 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, CallbackQuery
+from config import ADMIN_IDS
 from db import service_on, get_balance, tasks
 from flows import (s3_catalog, s3_countries, s3_offers, buy_s3, s3_poll, s3_cancel, drop_s3_cache,
                    find_service, search_services, is_wa, norm, OTP_TIMEOUT, CANCEL_LOCK)
@@ -367,6 +368,8 @@ async def operators_refresh(cq: CallbackQuery):
 
 @router.callback_query(F.data.startswith("stock3:subscribe:"))
 async def subscribe_s3_stock_alert(cq: CallbackQuery):
+    if cq.from_user.id not in ADMIN_IDS:
+        return await cq.answer("⛔ Only bot admins/owner can change notification settings.", show_alert=True)
     parts = cq.data.split(":", 3)
     if len(parts) != 4:
         return await cq.answer("Invalid notification request.", show_alert=True)
@@ -382,6 +385,8 @@ async def subscribe_s3_stock_alert(cq: CallbackQuery):
 
 @router.callback_query(F.data.startswith("stock3:stop:"))
 async def stop_s3_stock_alert(cq: CallbackQuery):
+    if cq.from_user.id not in ADMIN_IDS:
+        return await cq.answer("⛔ Only bot admins/owner can change notification settings.", show_alert=True)
     parts = cq.data.split(":", 3)
     if len(parts) != 4:
         return await cq.answer("Invalid notification request.", show_alert=True)
