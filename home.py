@@ -25,9 +25,62 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 from config import BOT_TITLE, SUPPORT_LINK
 from db import users, orders
+import stock_alerts
 from utils import B, KB, esc, fmt_curr, edit, SEP, normalize_support
 
 router = Router()
+
+@router.message(Command("notificationoff"))
+async def notification_off(message: Message):
+    service = (message.text or "").partition(" ")[2].strip()
+    if not service:
+        return await message.answer(
+            "🔔 <b>Notification settings</b>\\n"
+            "Use: <code>/notificationoff service name</code>\\n"
+            "Example: <code>/notificationoff WhatsApp</code>\\n"
+            "To mute everything: <code>/notificationoff all</code>"
+        )
+    if service.lower() == "all":
+        await stock_alerts.notification_preferences.update_one(
+            {"user_id": message.from_user.id},
+            {"$addToSet": {"disabled_services": "*"}}, upsert=True
+        )
+    else:
+        await stock_alerts.set_service_notifications(message.from_user.id, service, False)
+    await message.answer(f"🔕 Restock notifications turned off for <b>{esc(service)}</b>.")
+
+
+@router.message(Command("notificationon"))
+async def notification_on(message: Message):
+    service = (message.text or "").partition(" ")[2].strip()
+    if not service:
+        return await message.answer(
+            "🔔 <b>Notification settings</b>\\n"
+            "Use: <code>/notificationon service name</code>\\n"
+            "Example: <code>/notificationon WhatsApp</code>\\n"
+            "To enable everything: <code>/notificationon all</code>"
+        )
+    if service.lower() == "all":
+        await stock_alerts.notification_preferences.update_one(
+            {"user_id": message.from_user.id},
+            {"$set": {"disabled_services": []}}, upsert=True
+        )
+    else:
+        await stock_alerts.set_service_notifications(message.from_user.id, service, True)
+    await message.answer(f"🔔 Restock notifications turned on for <b>{esc(service)}</b>.")
+
+
+@router.callback_query(F.data.startswith("stock:mute:"))
+async def mute_stock_notifications(cq: CallbackQuery):
+    service_key = cq.data.split(":", 2)[2]
+    if service_key == "s2":
+        service_name = "Telegram Accounts"
+    else:
+        catalog = await __import__("flows").s3_catalog() or {}
+        service_name = str((catalog.get(service_key) or {}).get("name") or service_key)
+    await stock_alerts.set_service_notifications(cq.from_user.id, service_name, False)
+    await cq.answer(f"🔕 Notifications off: {service_name}", show_alert=True)
+
 
 
 async def home_view(uid, full_name):
