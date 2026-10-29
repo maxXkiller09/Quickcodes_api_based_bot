@@ -189,7 +189,7 @@ def search_services(cat, q, limit=16):
     return hits[:limit]
 
 
-async def s3_countries(sid, full=False, force=False):
+async def s3_countries(sid, full=False, force=False, include_empty=False):
     key = (sid, bool(full))
     now = time.time()
     c = _cty3.get(key)
@@ -207,7 +207,11 @@ async def s3_countries(sid, full=False, force=False):
             rows = d.get("countries") or []
             _cty3[key] = {"t": now, "rows": rows}
     pct = await profit_pct("s3")
-    out = [{**r, "my_price": with_profit(r["min_price"], pct, whole=True)} for r in rows if int(r.get("stock", 0)) > 0]
+    out = [
+        {**r, "my_price": with_profit(r.get("min_price", 0), pct, whole=True)}
+        for r in rows
+        if include_empty or int(r.get("stock", 0) or 0) > 0
+    ]
     return out
 
 
