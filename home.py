@@ -23,7 +23,7 @@ from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
-from config import BOT_TITLE, SUPPORT_LINK
+from config import BOT_TITLE, SUPPORT_LINK, ADMIN_IDS
 from db import users, orders
 import stock_alerts
 from utils import B, KB, esc, fmt_curr, edit, SEP, normalize_support
@@ -32,6 +32,8 @@ router = Router()
 
 @router.message(Command("notificationoff"))
 async def notification_off(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return await message.answer("⛔ Only bot admins/owner can change notification settings.")
     service = (message.text or "").partition(" ")[2].strip()
     if not service:
         return await message.answer(
@@ -56,6 +58,8 @@ async def notification_off(message: Message):
 
 @router.message(Command("notificationon"))
 async def notification_on(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return await message.answer("⛔ Only bot admins/owner can change notification settings.")
     service = (message.text or "").partition(" ")[2].strip()
     if not service:
         return await message.answer(
@@ -79,6 +83,8 @@ async def notification_on(message: Message):
 
 @router.callback_query(F.data.startswith("stock:mute:"))
 async def mute_stock_notifications(cq: CallbackQuery):
+    if cq.from_user.id not in ADMIN_IDS:
+        return await cq.answer("⛔ Only bot admins/owner can change notification settings.", show_alert=True)
     service_key = cq.data.split(":", 2)[2]
     if service_key == "s2":
         service_name = "Telegram Accounts"
