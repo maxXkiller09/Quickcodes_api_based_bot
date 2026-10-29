@@ -128,8 +128,9 @@ async def set_service_notifications(user_id: int, service_name: str, enabled: bo
 
 
 async def service_notifications_enabled(user_id: int, service_name: str) -> bool:
+    """Use one global admin-controlled notification policy for every bot user."""
     name = " ".join(str(service_name or "").strip().lower().replace("-", " ").split())
-    pref = await notification_preferences.find_one({"user_id": int(user_id)}, {"disabled_services": 1}) or {}
+    pref = await notification_preferences.find_one({"user_id": "global"}, {"disabled_services": 1}) or {}
     disabled = pref.get("disabled_services") or []
     if "*" in disabled:
         return False
