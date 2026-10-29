@@ -337,7 +337,7 @@ async def s3_refund_retry_loop():
             raise
         except Exception as e:
             print(f"[s3-refund-loop] scan failed: {e!r}")
-        await asyncio.sleep(20)
+        await asyncio.sleep(60)
 
 
 async def s3_poll(t):
@@ -607,7 +607,7 @@ async def warm_catalogs_once():
     return output
 
 
-async def catalog_warm_loop(interval=45):
+async def catalog_warm_loop(interval=300):
     """Keep frequently used service menus warm; cache TTLs still control API traffic."""
     while True:
         try:
