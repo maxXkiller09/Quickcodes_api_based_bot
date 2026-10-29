@@ -219,11 +219,11 @@ async def monitor_loop(interval: int = 180):
                     name = escape(name_raw)
                     price = float(row.get("my_price") or 0)
                     text = (
-                        "🔔 <b>Back in Stock!</b>\\n"
-                        "━━━━━━━━━━━━━━━━━━━━\\n"
-                        f"🌍 <b>Country:</b> {name}\\n"
-                        f"📊 <b>Stock:</b> {stock} accounts\\n"
-                        f"🏷️ <b>Price:</b> ₹{price:g}\\n\\n"
+                        "🔔 <b>Back in Stock!</b>\n"
+                        "━━━━━━━━━━━━━━━━━━━━\n"
+                        f"🌍 <b>Country:</b> {name}\n"
+                        f"📊 <b>Stock:</b> {stock} accounts\n"
+                        f"🏷️ <b>Price:</b> ₹{price:g}\n\n"
                         "<i>Grab it before it runs out!</i>"
                     )
                     markup = InlineKeyboardMarkup(inline_keyboard=[
@@ -276,12 +276,12 @@ async def monitor_loop(interval: int = 180):
                     if not is_restock_transition(old.get("stock") if old else None, stock):
                         continue
                     text = (
-                        "🔔 <b>Back in Stock!</b>\\n"
-                        "━━━━━━━━━━━━━━━━━━━━\\n"
-                        f"📱 <b>Service:</b> {escape(service_name)}\\n"
-                        f"🌍 <b>Country:</b> {escape(name_raw)}\\n"
-                        f"📊 <b>Stock:</b> {stock} numbers\\n"
-                        f"🏷️ <b>Starting price:</b> ₹{price:g}\\n\\n"
+                        "🔔 <b>Back in Stock!</b>\n"
+                        "━━━━━━━━━━━━━━━━━━━━\n"
+                        f"📱 <b>Service:</b> {escape(service_name)}\n"
+                        f"🌍 <b>Country:</b> {escape(name_raw)}\n"
+                        f"📊 <b>Stock:</b> {stock} numbers\n"
+                        f"🏷️ <b>Starting price:</b> ₹{price:g}\n\n"
                         "<i>Numbers are available again. Check live offers before buying.</i>"
                     )
                     markup = InlineKeyboardMarkup(inline_keyboard=[
