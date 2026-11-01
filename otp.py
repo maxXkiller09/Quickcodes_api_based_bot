@@ -268,7 +268,11 @@ async def countries_cb(cq: CallbackQuery, state: FSMContext):
     if not await gate(cq, sid):
         return
     await cq.answer()
-    await render_countries(cq, sid, int(page))
+    # WhatsApp's normal entry must use the same full-country cache refreshed
+    # by the five-minute catalog monitor; otherwise it can show stale/empty data.
+    cat = await s3_catalog()
+    full = is_wa((cat or {}).get(sid, {}).get("name", ""))
+    await render_countries(cq, sid, int(page), full=full)
 
 
 @router.callback_query(F.data.startswith("s3a:"))
