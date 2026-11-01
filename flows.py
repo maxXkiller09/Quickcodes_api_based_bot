@@ -196,7 +196,7 @@ async def s3_countries(sid, full=False, force=False, include_empty=False):
     if not force and c and now - c["t"] < S3_COUNTRIES_CACHE_TTL:
         rows = c["rows"]
     else:
-        st, d = await qc("s3", "GET", "/v1/s3/countries", params={"service": sid, "full": int(bool(full))}, timeout=45)
+        st, d = await qc("s3", "GET", "/v1/s3/countries", params={"service": sid, "full": int(bool(full))}, timeout=15)
         if not d.get("ok"):
             await explain("s3", st, d)
             if c:
