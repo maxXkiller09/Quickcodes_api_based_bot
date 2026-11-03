@@ -97,7 +97,14 @@ class ActivityMiddleware(BaseMiddleware):
             except Exception:
                 # Logging failures must never break user-facing bot handlers.
                 pass
-        return await handler(event, data)
+        started = asyncio.get_running_loop().time()
+        try:
+            return await handler(event, data)
+        finally:
+            elapsed = asyncio.get_running_loop().time() - started
+            if elapsed >= 5:
+                logging.warning("[handler-slow] update=%s elapsed=%.2fs",
+                                type(event).__name__, elapsed)
 
 
 class UserMiddleware(BaseMiddleware):
