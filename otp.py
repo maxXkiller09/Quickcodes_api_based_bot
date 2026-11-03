@@ -206,8 +206,8 @@ async def search_text(msg: Message, state: FSMContext):
 
 
 # ===================== countries =====================
-async def render_countries(target, sid, page=0, query=None, full=False):
-    cat = await s3_catalog()
+async def render_countries(target, sid, page=0, query=None, full=False, catalog=None):
+    cat = catalog if catalog is not None else await s3_catalog()
     svc = (cat or {}).get(sid)
     if not svc:
         return await render_root(target)
@@ -284,7 +284,7 @@ async def countries_cb(cq: CallbackQuery, state: FSMContext):
     # by the five-minute catalog monitor; otherwise it can show stale/empty data.
     cat = await s3_catalog()
     full = is_wa((cat or {}).get(sid, {}).get("name", ""))
-    await render_countries(cq, sid, int(page), full=full)
+    await render_countries(cq, sid, int(page), full=full, catalog=cat)
 
 
 @router.callback_query(F.data.startswith("s3a:"))
@@ -304,7 +304,7 @@ async def refresh_cb(cq: CallbackQuery):
     drop_s3_cache(sid)
     await cq.answer("🔄 Updated")
     cat = await s3_catalog()
-    await render_countries(cq, sid, 0, full=is_wa((cat or {}).get(sid, {}).get("name")))
+    await render_countries(cq, sid, 0, full=is_wa((cat or {}).get(sid, {}).get("name")), catalog=cat)
 
 
 @router.callback_query(F.data.startswith("s3cq:"))
@@ -615,7 +615,7 @@ async def open_whatsapp(cq: CallbackQuery, state: FSMContext):
     if not sid:
         return await edit(cq, "❌ WhatsApp is not available right now. Please try again later.",
                           KB([B("⬅️ Back", "back_main")]))
-    await render_countries(cq, sid, 0, full=True)
+    await render_countries(cq, sid, 0, full=True, catalog=cat)
 
 
 # ===================== background worker: OTP delivery / timeout / refunds =====================
