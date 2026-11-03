@@ -42,7 +42,7 @@ async def _sess():
                     timeout=aiohttp.ClientTimeout(total=40),
                     connector=aiohttp.TCPConnector(
                         ssl=ssl.create_default_context(cafile=certifi.where()),
-                        limit=100, limit_per_host=30, ttl_dns_cache=300))
+                        limit=100, limit_per_host=30, ttl_dns_cache=300, keepalive_timeout=60))
     return _session
 
 
