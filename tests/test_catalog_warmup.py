@@ -80,3 +80,27 @@ def test_warmup_skips_all_services_without_configured_keys(monkeypatch):
     monkeypatch.setattr(flows, "smm_catalog", unexpected)
 
     assert asyncio.run(flows.warm_catalogs_once()) == {}
+
+
+
+def test_warmup_preloads_whatsapp_full_country_list(monkeypatch):
+    calls = []
+
+    async def fake_settings():
+        return {"api_keys": {"s2": "", "s3": "key-3", "smm": ""}}
+
+    async def fake_s3():
+        return {"wa-id": {"name": "WhatsApp"}, "other": {"name": "Telegram"}}
+
+    async def fake_countries(sid, full=False, include_empty=False):
+        calls.append((sid, full, include_empty))
+        return [{"country": "IN"}]
+
+    monkeypatch.setattr(flows, "get_settings", fake_settings)
+    monkeypatch.setattr(flows, "s3_catalog", fake_s3)
+    monkeypatch.setattr(flows, "s3_countries", fake_countries)
+
+    result = asyncio.run(flows.warm_catalogs_once())
+
+    assert result["s3"]["wa-id"]["name"] == "WhatsApp"
+    assert calls == [("wa-id", True, True)]
