@@ -71,3 +71,38 @@ def test_unrelated_catalog_keys_can_load_concurrently(monkeypatch):
         assert flows._catalog_locks == {}
 
     asyncio.run(run())
+
+
+def test_concurrent_s3_country_requests_keep_include_empty_filters_separate(monkeypatch):
+    calls = []
+
+    async def fake_qc(server, method, path, **kwargs):
+        calls.append((server, path, kwargs.get("params")))
+        await asyncio.sleep(0.02)
+        return 200, {"ok": True, "countries": [
+            {"country": "IN", "name": "India", "stock": 2, "min_price": 10},
+            {"country": "US", "name": "United States", "stock": 0, "min_price": 20},
+        ]}
+
+    async def fake_profit_pct(*args, **kwargs):
+        return 0
+
+    async def unexpected_explain(*args, **kwargs):
+        raise AssertionError("explain() should not run for successful fake responses")
+
+    monkeypatch.setattr(flows, "qc", fake_qc)
+    monkeypatch.setattr(flows, "profit_pct", fake_profit_pct)
+    monkeypatch.setattr(flows, "explain", unexpected_explain)
+    monkeypatch.setattr(flows, "_cty3", {})
+
+    async def run():
+        filtered, all_rows = await asyncio.gather(
+            flows.s3_countries("whatsapp", full=True, include_empty=False),
+            flows.s3_countries("whatsapp", full=True, include_empty=True),
+        )
+        assert [row["country"] for row in filtered] == ["IN"]
+        assert [row["country"] for row in all_rows] == ["IN", "US"]
+        assert len(calls) == 1
+        assert flows._catalog_locks == {}
+
+    asyncio.run(run())
