@@ -69,7 +69,7 @@ async def s2_rows(force=False):
     now = time.time()
     if not force and _s2["rows"] is not None and now - _s2["t"] < S2_COUNTRIES_CACHE_TTL:
         return _s2["rows"]
-    st, d = await qc("s2", "GET", "/v1/s2/countries")
+    st, d = await qc("s2", "GET", "/v1/s2/countries", timeout=20)
     if d.get("ok"):
         _s2.update(t=now, rows=d.get("countries") or [])
         return _s2["rows"]
@@ -148,7 +148,7 @@ async def s3_catalog():
         return _cat3["v"]
     items, offset = {}, 0
     while True:
-        st, d = await qc("s3", "GET", "/v1/s3/services", params={"limit": 200, "offset": offset})
+        st, d = await qc("s3", "GET", "/v1/s3/services", params={"limit": 200, "offset": offset}, timeout=20)
         if not d.get("ok"):
             await explain("s3", st, d)
             break
@@ -229,7 +229,7 @@ async def s3_offers(sid, cid, force=False):
     if not force and c and now - c["t"] < S3_OFFERS_CACHE_TTL:
         data = c
     else:
-        st, d = await qc("s3", "GET", "/v1/s3/offers", params={"service": sid, "country": cid}, timeout=45)
+        st, d = await qc("s3", "GET", "/v1/s3/offers", params={"service": sid, "country": cid}, timeout=20)
         if not d.get("ok"):
             await explain("s3", st, d)
             if not c:
@@ -406,7 +406,7 @@ async def smm_catalog():
         return _smm["v"]
     rows, offset = [], 0
     while True:
-        st, d = await qc("smm", "GET", "/v1/smm/services", params={"limit": 500, "offset": offset}, timeout=60)
+        st, d = await qc("smm", "GET", "/v1/smm/services", params={"limit": 500, "offset": offset}, timeout=20)
         if not d.get("ok"):
             await explain("smm", st, d)
             break
