@@ -20,6 +20,8 @@
 
 """Quick Codes API client + friendly error handling."""
 import asyncio
+import logging
+import time
 from html import escape
 import ssl
 import aiohttp
@@ -59,6 +61,7 @@ async def qc(server, method, path, params=None, json=None, timeout=30, key=None)
         key = ((await get_settings())["api_keys"].get(server) or "").strip()
     if not key:
         return 0, {"ok": False, "error": "no_key", "message": "API key is not set"}
+    started = time.perf_counter()
     try:
         s = await _sess()
         async with s.request(method, QC_API_BASE + path, params=params, json=json,
@@ -69,9 +72,16 @@ async def qc(server, method, path, params=None, json=None, timeout=30, key=None)
                 data = {"ok": False, "error": "bad_response", "message": "Invalid response from API"}
             if not isinstance(data, dict):
                 data = {"ok": False, "error": "bad_response", "message": "Invalid response from API"}
+            elapsed = time.perf_counter() - started
+            if elapsed >= 5:
+                logging.warning("[api-slow] server=%s method=%s path=%s status=%s elapsed=%.2fs",
+                                server, method.upper(), path, r.status, elapsed)
             return r.status, data
     except asyncio.TimeoutError:
         # the request may or may not have been processed -> callers treat money actions carefully
+        elapsed = time.perf_counter() - started
+        logging.warning("[api-timeout] server=%s method=%s path=%s elapsed=%.2fs",
+                        server, method.upper(), path, elapsed)
         return 0, {"ok": False, "error": "timeout", "message": "API did not answer in time"}
     except aiohttp.ClientError as e:
         return 0, {"ok": False, "error": "network", "message": f"Cannot reach API: {e!r}"}
