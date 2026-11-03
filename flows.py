@@ -61,6 +61,7 @@ S3_CATALOG_CACHE_TTL = 300
 S3_COUNTRIES_CACHE_TTL = 300
 S3_OFFERS_CACHE_TTL = 60
 SMM_CATALOG_CACHE_TTL = 1800
+CATALOG_WARM_TIMEOUT = 18
 
 _s2 = {"t": 0.0, "rows": None}
 
@@ -611,7 +612,10 @@ async def warm_catalogs_once():
     whatsapp_id = find_service(catalog or {}, "WhatsApp") if isinstance(catalog, dict) else None
     if whatsapp_id:
         try:
-            await s3_countries(whatsapp_id, full=True, include_empty=True)
+            await asyncio.wait_for(
+                s3_countries(whatsapp_id, full=True, include_empty=True),
+                timeout=CATALOG_WARM_TIMEOUT,
+            )
         except Exception as e:
             print(f"[catalog warmup] WhatsApp countries refresh failed: {e!r}")
     return output
