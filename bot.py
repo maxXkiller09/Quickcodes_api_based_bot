@@ -259,12 +259,17 @@ async def force_join_check(cq):
 async def main():
     bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher(storage=MemoryStorage())
-    dp.message.outer_middleware(ForceJoinMiddleware())
-    dp.callback_query.outer_middleware(ForceJoinMiddleware())
-    dp.message.outer_middleware(ActivityMiddleware())
-    dp.callback_query.outer_middleware(ActivityMiddleware())
-    dp.message.outer_middleware(UserMiddleware())
-    dp.callback_query.outer_middleware(UserMiddleware())
+    # Share middleware instances across update types so their in-memory
+    # membership/profile caches are reused for both messages and callbacks.
+    force_join_middleware = ForceJoinMiddleware()
+    activity_middleware = ActivityMiddleware()
+    user_middleware = UserMiddleware()
+    dp.message.outer_middleware(force_join_middleware)
+    dp.callback_query.outer_middleware(force_join_middleware)
+    dp.message.outer_middleware(activity_middleware)
+    dp.callback_query.outer_middleware(activity_middleware)
+    dp.message.outer_middleware(user_middleware)
+    dp.callback_query.outer_middleware(user_middleware)
     dp.callback_query.register(force_join_check, F.data == "force_join_check")
 
     # admin first so its text prompts always win
