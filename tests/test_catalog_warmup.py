@@ -104,3 +104,24 @@ def test_warmup_preloads_whatsapp_full_country_list(monkeypatch):
 
     assert result["s3"]["wa-id"]["name"] == "WhatsApp"
     assert calls == [("wa-id", True, True)]
+
+
+def test_whatsapp_warmup_timeout_does_not_block_catalog_cycle(monkeypatch, capsys):
+    async def fake_settings():
+        return {"api_keys": {"s2": "", "s3": "key-3", "smm": ""}}
+
+    async def fake_s3():
+        return {"wa-id": {"name": "WhatsApp"}}
+
+    async def hanging_countries(*args, **kwargs):
+        await asyncio.sleep(10)
+
+    monkeypatch.setattr(flows, "get_settings", fake_settings)
+    monkeypatch.setattr(flows, "s3_catalog", fake_s3)
+    monkeypatch.setattr(flows, "s3_countries", hanging_countries)
+    monkeypatch.setattr(flows, "CATALOG_WARM_TIMEOUT", 0.001)
+
+    result = asyncio.run(flows.warm_catalogs_once())
+
+    assert result["s3"] == {"wa-id": {"name": "WhatsApp"}}
+    assert "WhatsApp countries refresh failed" in capsys.readouterr().out
