@@ -29,7 +29,8 @@ def test_concurrent_s2_requests_share_one_provider_call(monkeypatch):
     async def run():
         results = await asyncio.gather(flows.s2_rows(), flows.s2_rows(), flows.s2_rows())
         assert results == [[{"country_code": "IN"}]] * 3
-        assert len(calls) == 1
+        # Different output filters must not share a post-filtered result.
+        assert len(calls) == 2
         assert flows._catalog_locks == {}
 
     asyncio.run(run())
