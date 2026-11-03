@@ -29,7 +29,6 @@ def test_concurrent_s2_requests_share_one_provider_call(monkeypatch):
     async def run():
         results = await asyncio.gather(flows.s2_rows(), flows.s2_rows(), flows.s2_rows())
         assert results == [[{"country_code": "IN"}]] * 3
-        # Raw rows are shared; each caller applies its own filter after cache read.
         assert len(calls) == 1
         assert flows._catalog_locks == {}
 
