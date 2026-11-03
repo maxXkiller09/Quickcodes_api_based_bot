@@ -188,10 +188,10 @@ class ForceJoinMiddleware(BaseMiddleware):
             return await handler(event, data)
 
         bot = data.get("bot")
-        missing = []
-        for chat_id, invite_link, label in channels:
+
+        async def check_channel(chat_id, invite_link, label):
             try:
-                chat_ref = int(chat_id) if re.fullmatch(r"-?\d+", str(chat_id)) else chat_id
+                chat_ref = int(chat_id) if re.fullmatch(r"-?\\d+", str(chat_id)) else chat_id
                 cache_key = (str(chat_ref), user.id)
                 is_member = self._cached_membership(cache_key)
                 if is_member is None:
@@ -203,13 +203,17 @@ class ForceJoinMiddleware(BaseMiddleware):
                             and getattr(member, "is_member", False))
                     )
                     self._store_membership(cache_key, is_member)
-                if not is_member:
-                    missing.append((invite_link, label))
+                return None if is_member else (invite_link, label)
             except Exception as exc:
                 logging.warning("Force-join check failed for %s: %r", label, exc)
-                # Fail closed when a configured channel cannot be verified.
-                missing.append((invite_link, label))
+                return (invite_link, label)
 
+        # Run both Telegram membership checks together instead of serially.
+        results = await asyncio.gather(
+            *(check_channel(chat_id, invite_link, label)
+              for chat_id, invite_link, label in channels)
+        )
+        missing = [item for item in results if item is not None]
         if not missing:
             return await handler(event, data)
 
@@ -230,6 +234,8 @@ class ForceJoinMiddleware(BaseMiddleware):
 
 async def force_join_check(cq):
     """Re-check membership after the user taps the force-join confirmation button."""
+    # Acknowledge immediately so Telegram does not keep showing a loading spinner.
+    await cq.answer("Checking your channel membership…")
     settings = await get_settings()
     fj = settings.get("force_join") or {}
     channels = [
@@ -237,30 +243,34 @@ async def force_join_check(cq):
         (fj.get("channel_2", ""), fj.get("link_2", "")),
     ]
     channels = [(chat_id, link) for chat_id, link in channels if chat_id and link]
-    missing = []
-    for chat_id, link in channels:
+
+    async def check_channel(chat_id, link):
         try:
-            chat_ref = int(chat_id) if re.fullmatch(r"-?\d+", str(chat_id)) else chat_id
+            chat_ref = int(chat_id) if re.fullmatch(r"-?\\d+", str(chat_id)) else chat_id
             member = await cq.bot.get_chat_member(chat_id=chat_ref, user_id=cq.from_user.id)
-            if member.status not in (ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR,
-                                     ChatMemberStatus.CREATOR) and not (
-                member.status == ChatMemberStatus.RESTRICTED and getattr(member, "is_member", False)
-            ):
-                missing.append(link)
+            is_member = (
+                member.status in (ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR,
+                                  ChatMemberStatus.CREATOR)
+                or (member.status == ChatMemberStatus.RESTRICTED
+                    and getattr(member, "is_member", False))
+            )
+            return None if is_member else link
         except Exception as exc:
             logging.warning("Force-join recheck failed for %s: %r", chat_id, exc)
-            missing.append(link)
+            return link
 
+    results = await asyncio.gather(*(check_channel(chat_id, link) for chat_id, link in channels))
+    missing = [link for link in results if link]
     if missing:
-        await cq.answer("You still need to join both required channels.", show_alert=True)
+        if cq.message:
+            await cq.message.answer("❌ You still need to join the required channel(s).")
         return
-    await cq.answer("Membership verified! 🎉")
     if cq.message:
         try:
             await cq.message.delete()
         except Exception:
             pass
-        await cq.message.answer("✅ <b>You're all set!</b> Send /start to open Nexora.")
+        await cq.message.answer("✅ <b>Membership verified! You're all set.</b> Send /start to open Nexora.")
 
 
 async def main():
