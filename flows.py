@@ -578,7 +578,7 @@ def _singleflight(key_builder):
 # Keep these wrappers at module end so internal calls also use single-flight.
 s2_rows = _singleflight(lambda *a, **k: "all")(s2_rows)
 s3_catalog = _singleflight(lambda *a, **k: "all")(s3_catalog)
-s3_countries = _singleflight(lambda sid, full=False, force=False, include_empty=False: (str(sid), bool(full), bool(force), bool(include_empty)))(s3_countries)
+s3_countries = _singleflight(lambda sid, full=False, force=False, include_empty=False: (str(sid), bool(full), bool(force)))(s3_countries)
 s3_offers = _singleflight(lambda sid, cid, force=False: (str(sid), str(cid), bool(force)))(s3_offers)
 smm_catalog = _singleflight(lambda *a, **k: "all")(smm_catalog)
 
