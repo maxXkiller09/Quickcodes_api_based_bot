@@ -212,6 +212,11 @@ async def monitor_loop(interval: int = 300):
             # Server 2: provider country endpoint includes stock counts, including zero-stock rows.
             rows = await s2_view(force=True)
             if rows is not None:
+                # Load prior stock state in one query instead of one query per country.
+                previous_s2 = {
+                    str(item.get("country_code") or ""): item
+                    async for item in snapshots.find({}, {"country_code": 1, "stock": 1})
+                }
                 seen_s2_codes = set()
                 for row in rows:
                     code = str(row.get("country_code") or "").strip()
@@ -224,7 +229,7 @@ async def monitor_loop(interval: int = 300):
                     except (TypeError, ValueError):
                         continue
                     checked_s2 += 1
-                    old = await snapshots.find_one({"country_code": code})
+                    old = previous_s2.get(code)
                     await snapshots.update_one(
                         {"country_code": code},
                         {"$set": {"stock": stock, "name": str(row.get("name") or code),
@@ -270,6 +275,13 @@ async def monitor_loop(interval: int = 300):
                 countries = await s3_countries(str(sid), full=True, force=True, include_empty=True)
                 if countries is None:
                     continue
+                # Fetch this service's previous snapshot once, not once per country.
+                previous_s3 = {
+                    str(item.get("country_code") or ""): item
+                    async for item in s3_snapshots.find(
+                        {"service_id": str(sid)}, {"country_code": 1, "stock": 1}
+                    )
+                }
                 seen_s3_codes = set()
                 for row in countries:
                     code = str(row.get("country") or "").strip()
@@ -282,7 +294,7 @@ async def monitor_loop(interval: int = 300):
                     except (TypeError, ValueError):
                         continue
                     checked_s3 += 1
-                    old = await s3_snapshots.find_one({"service_id": str(sid), "country_code": code})
+                    old = previous_s3.get(code)
                     name_raw = str(row.get("name") or code)
                     price = float(row.get("my_price") or 0)
                     await s3_snapshots.update_one(
