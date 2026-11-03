@@ -604,6 +604,16 @@ async def warm_catalogs_once():
             output[name] = None
         else:
             output[name] = result
+
+    # WhatsApp opens directly into its full country list. Keep that expensive
+    # provider response warm too, rather than warming only the service names.
+    catalog = output.get("s3")
+    whatsapp_id = find_service(catalog or {}, "WhatsApp") if isinstance(catalog, dict) else None
+    if whatsapp_id:
+        try:
+            await s3_countries(whatsapp_id, full=True, include_empty=True)
+        except Exception as e:
+            print(f"[catalog warmup] WhatsApp countries refresh failed: {e!r}")
     return output
 
 
