@@ -214,7 +214,19 @@ async def render_countries(target, sid, page=0, query=None, full=False):
     title = esc(svc["name"])
     back = back_for(svc["name"])
     await edit(target, f"⏳ <i>Fetching live rates for {title}…</i>")
-    rows = await s3_countries(sid, full=full, include_empty=full)
+    try:
+        # Bound the complete load, including settings/database waits before the
+        # provider request. The API's own timeout alone cannot bound those waits.
+        rows = await asyncio.wait_for(
+            s3_countries(sid, full=full, include_empty=full),
+            timeout=18,
+        )
+    except asyncio.TimeoutError:
+        print(f"[catalog-timeout] service={sid} full={bool(full)} country list exceeded 18s")
+        rows = None
+    except Exception as e:
+        print(f"[catalog-error] service={sid} full={bool(full)} error={e!r}")
+        rows = None
     if rows is None:
         return await edit(target, f"<b>Service: {title}</b>\n{LINE}\n{BUSY_TXT}", busy_kb(f"s3r:{sid}", back))
     if query:
