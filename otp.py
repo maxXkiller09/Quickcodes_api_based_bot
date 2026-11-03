@@ -586,15 +586,35 @@ async def wp_terms(cq: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "s3_open_wp")
 async def open_whatsapp(cq: CallbackQuery, state: FSMContext):
     await state.clear()
-    if not await service_on("wa"):
-        return await cq.answer("⚠️ WhatsApp is under maintenance. Please try again later!", show_alert=True)
     await cq.answer()
-    cat = await s3_catalog()
+    await edit(cq, "⏳ <i>Opening WhatsApp…</i>")
+
+    async def load_whatsapp_catalog():
+        enabled = await service_on("wa")
+        if not enabled:
+            return False, None
+        return True, await s3_catalog()
+
+    try:
+        # Bound the pre-country stage too: settings lookup and service catalog
+        # loading happen before render_countries' own 18-second timeout.
+        enabled, cat = await asyncio.wait_for(load_whatsapp_catalog(), timeout=18)
+    except asyncio.TimeoutError:
+        print("[catalog-timeout] service=WhatsApp stage=availability_or_catalog exceeded 18s")
+        return await edit(cq, f"<b>WhatsApp</b>\\n{LINE}\\n{BUSY_TXT}",
+                          busy_kb("s3_open_wp", "back_main"))
+    except Exception as e:
+        print(f"[catalog-error] service=WhatsApp stage=availability_or_catalog error={e!r}")
+        return await edit(cq, f"<b>WhatsApp</b>\\n{LINE}\\n{BUSY_TXT}",
+                          busy_kb("s3_open_wp", "back_main"))
+
+    if not enabled:
+        return await edit(cq, "⚠️ WhatsApp is under maintenance. Please try again later!",
+                          KB([B("⬅️ Back", "back_main")]))
     sid = find_service(cat or {}, "WhatsApp")
     if not sid:
         return await edit(cq, "❌ WhatsApp is not available right now. Please try again later.",
                           KB([B("⬅️ Back", "back_main")]))
-    await edit(cq, "⏳ <i>Opening WhatsApp…</i>")
     await render_countries(cq, sid, 0, full=True)
 
 
