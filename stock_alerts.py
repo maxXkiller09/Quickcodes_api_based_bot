@@ -152,12 +152,28 @@ async def _broadcast_restock(service_name: str, text: str, markup):
         logging.error("Restock alert skipped: Telegram bot is not initialized")
         return
     sent = skipped = failed = 0
+    # Notification policy is global and identical for every user. Read it once
+    # per broadcast instead of issuing one MongoDB query for every recipient.
+    pref = await notification_preferences.find_one(
+        {"user_id": "global"}, {"disabled_services": 1}
+    ) or {}
+    disabled = {
+        " ".join(str(value).strip().lower().replace("-", " ").split())
+        for value in (pref.get("disabled_services") or [])
+    }
+    name = " ".join(str(service_name or "").strip().lower().replace("-", " ").split())
+    aliases = {name}
+    if name in {"telegram accounts", "telegram account", "server 2", "s2"}:
+        aliases.update({"telegram accounts", "telegram account", "server 2", "s2"})
+    if name in {"whatsapp", "whatsapp accounts", "server 3", "s3"}:
+        aliases.update({"whatsapp", "whatsapp accounts"})
+    enabled = "*" not in disabled and not aliases.intersection(disabled)
     async for user in users.find({}, {"_id": 1}):
         uid = user.get("_id")
         if uid is None:
             continue
         try:
-            if not await service_notifications_enabled(int(uid), service_name):
+            if not enabled:
                 skipped += 1
                 continue
             await bot.send_message(int(uid), text, reply_markup=markup, parse_mode="HTML")
