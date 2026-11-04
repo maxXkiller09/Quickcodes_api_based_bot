@@ -14,15 +14,15 @@ class RestockTransitionTests(unittest.TestCase):
     def test_price_formats_decimal_without_changing_value(self):
         self.assertEqual(format_inr("3267470.5"), "32,67,470.50")
 
-    def test_poll_runs_every_five_minutes_start_to_start(self):
-        self.assertEqual(poll_delay(300, 0), 300)
-        self.assertEqual(poll_delay(300, 90), 210)
+    def test_poll_runs_every_ten_minutes_start_to_start(self):
+        self.assertEqual(poll_delay(600, 0), 600)
+        self.assertEqual(poll_delay(600, 90), 510)
 
-    def test_slow_poll_does_not_add_another_five_minute_wait(self):
-        self.assertEqual(poll_delay(300, 360), 0)
+    def test_slow_poll_does_not_add_another_ten_minute_wait(self):
+        self.assertEqual(poll_delay(600, 660), 0)
 
-    def test_poll_interval_never_falls_below_five_minutes(self):
-        self.assertEqual(poll_delay(60, 10), 290)
+    def test_poll_interval_never_falls_below_ten_minutes(self):
+        self.assertEqual(poll_delay(60, 10), 590)
 
     def test_first_snapshot_does_not_trigger(self):
         self.assertFalse(is_restock_transition(None, 5))
