@@ -81,8 +81,8 @@ async def build_menu(page=0, query=None):
     first = page * PER_PAGE + 1
     last = min((page + 1) * PER_PAGE, len(rows))
     text = (
-        f"<b>{head}</b>\n{LINE}\n"
-        f"🌍 <b>Choose a country</b>\n"
+        f"💜 <b>{head}</b>  <code>NEXORA MARKET</code>\n{LINE}\n"
+        f"✦ <b>Choose a country</b>\n"
         f"📄 Page <b>{page + 1}/{pages}</b> · Showing <b>{first}–{last}</b> of <b>{len(rows)}</b>\n"
         f"{LINE}\n"
         f"<i>🟢 Available · 🔴 Out of stock</i>\n"
@@ -153,7 +153,7 @@ async def country(cq: CallbackQuery):
         return await cq.answer("❌ Country no longer available", show_alert=True)
     bal = await get_balance(cq.from_user.id)
     price, qty = row["my_price"], int(row["stock"])
-    text = (f"<b>{TITLE} — Purchase</b>\n{LINE}\n"
+    text = (f"💜 <b>{TITLE} — Purchase</b>  <code>ORDER DETAILS</code>\n{LINE}\n"
             f"<blockquote><b>🌍 Country:</b> {esc(row['name'])}\n"
             f"<b>📊 Stock:</b> {qty} accounts\n"
             f"<b>🏷️ Price:</b> {fmt_short(price)}</blockquote>\n{LINE}\n"
