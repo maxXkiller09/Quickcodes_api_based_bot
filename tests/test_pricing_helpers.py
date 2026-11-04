@@ -29,3 +29,19 @@ def test_with_profit_applies_percentage_markup():
 def test_with_profit_whole_mode_rounds_up_fractional_values():
     assert with_profit(10, 5, whole=True) == 11
     assert with_profit(10, 0, whole=True) == 10
+
+
+def test_with_profit_uses_decimal_arithmetic_for_fractional_markup():
+    assert with_profit("0.10", "10") == 0.11
+    assert with_profit("19.99", "5") == 20.99
+
+
+def test_with_profit_whole_mode_always_returns_whole_rupees():
+    assert with_profit("10.25", 0, whole=True) == 11
+    assert with_profit("10.25", "0.1", whole=True) == 11
+
+
+def test_with_profit_rejects_invalid_or_negative_inputs():
+    assert with_profit("NaN", 10) == 0
+    assert with_profit(-10, 10) == 0
+    assert with_profit(10, -5) == 0
