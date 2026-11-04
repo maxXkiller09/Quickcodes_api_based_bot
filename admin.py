@@ -101,7 +101,7 @@ async def _del(msg):
 # ============================== home ==============================
 async def home(target):
     text = (
-        f"💜 <b>NEXORA · ADMIN</b>\n{SEP}\n"
+        f"◇ <b>NEXORA · ADMIN</b>\n{SEP}\n"
         f"<i>{esc(BOT_TITLE)} control centre</i>\n\n"
         "Choose a section below. Changes apply to the live bot.\n"
         "🔌 Services · pricing · API connections · wallet payments"
@@ -144,7 +144,7 @@ async def render_services(cq):
     s = await get_settings()
     rows = [[B(f"{'✅' if s['services'].get(k, True) else '❌'} {n}", f"adm:tog:{k}")] for k, n in SERVICES]
     rows.append([B("🏠 Admin Home", "adm:home")])
-    await edit(cq, f"💜 <b>SERVICE CONTROLS</b>\n{SEP}\n<i>Tap to switch a service ON / OFF for your users.</i>", KB(*rows))
+    await edit(cq, f"◇ <b>SERVICE CONTROLS</b>\n{SEP}\n<i>Tap to switch a service ON / OFF for your users.</i>", KB(*rows))
 
 
 @router.callback_query(F.data == "adm:svc", IS_ADMIN)
@@ -174,7 +174,7 @@ async def render_profit(cq):
     ]
     rows = [[B(f"✏️ {n} profit %", f"adm:pset:{k}")] for k, n, d in APIS]
     rows.append([B("⬅️ Back", "adm:home")])
-    await edit(cq, f"💜 <b>PRICING &amp; PROFIT</b>\n{SEP}\n" + "\n".join(lines) +
+    await edit(cq, f"◇ <b>PRICING &amp; PROFIT</b>\n{SEP}\n" + "\n".join(lines) +
                "\n\n<i>Each service adds its configured percentage to the current Quick Codes API price. Set 0% for provider-rate pricing.</i>", KB(*rows))
 
 
@@ -220,7 +220,7 @@ async def render_api(cq):
     lines = [f"• <b>{n}</b> ({d})\n   <code>{esc(mask(s['api_keys'].get(k)))}</code>" for k, n, d in APIS]
     rows = [[B(f"✏️ Change {n} key", f"adm:kset:{k}")] for k, n, d in APIS]
     rows.append([B("⬅️ Back", "adm:home")])
-    await edit(cq, f"💜 <b>API CONNECTIONS</b>\n{SEP}\n" + "\n".join(lines) +
+    await edit(cq, f"◇ <b>API CONNECTIONS</b>\n{SEP}\n" + "\n".join(lines) +
                "\n\n<i>Get the keys in the Quick Codes bot → 🔑 API Keys.</i>", KB(*rows))
 
 
