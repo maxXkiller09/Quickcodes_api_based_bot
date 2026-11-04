@@ -325,7 +325,7 @@ async def monitor_loop(interval: int = 300):
                         "<i>Grab it before it runs out!</i>"
                     )
                     markup = InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="◇ View Numbers", callback_data=f"s3c:{sid}:{code}")],
+                        [InlineKeyboardButton(text="📱 View Numbers", callback_data=f"s3c:{sid}:{code}")],
                         [InlineKeyboardButton(text="🔕 Mute My Alerts", callback_data=f"stock:stopuser:{sid}")],
                     ])
                     alerts += 1
