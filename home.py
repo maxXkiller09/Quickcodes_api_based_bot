@@ -121,20 +121,20 @@ async def home_view(uid, full_name):
     mention = f"<a href='tg://user?id={uid}'>{esc(full_name or 'there')}</a>"
     balance = fmt_curr(u.get('balance', 0))
     text = (
-        f"✦ <b>{esc(BOT_TITLE).upper()}</b>  <code> DIGITAL HUB</code>\n"
-        f"<i>One place. Your services. Your wallet.</i>\n"
+        f"💜 <b>{esc(BOT_TITLE).upper()}</b>  <code> DIGITAL HUB</code>\n"
+        f"<i>Your services. Your wallet. All in one place.</i>\n"
         f"{SEP}\n"
-        f"Hey {mention} 👋 <b>ready to get started?</b>\n\n"
-        f"💳 <b>WALLET BALANCE</b>\n"
+        f"Hey {mention} 👋 <b>welcome back</b>\n\n"
+        f"💜 <b>YOUR WALLET</b>\n"
         f"<blockquote>💰 <b>{balance}</b></blockquote>\n"
-        f"🛍 <b>EXPLORE SERVICES</b>\n"
-        f"<i>Telegram accounts at the current provider rate — no added markup.</i>\n"
-        f"\n<code>FAST ACCESS  •  CLEAR PRICING  •  ORDER TRACKING</code>"
+        f"✦ <b>EXPLORE SERVICES</b>\n"
+        f"<i>Telegram Accounts are available at the current provider rate — no added markup.</i>\n"
+        f"\n<code>SECURE  •  SIMPLE  •  QUICK</code>"
     )
     rows = [
-        [B("✈️  Telegram Accounts", "buy")],
-        [B("💬  WhatsApp Accounts", "wp_terms"), B("📲  Apps OTP", "s3_user_root")],
-        [B("📈  Social Media Services", "feature_smm_external")],
+        [B("💜  Telegram Accounts", "buy")],
+        [B("💬  WhatsApp", "wp_terms"), B("📲  Apps OTP", "s3_user_root")],
+        [B("✦  Social Media Services", "feature_smm_external")],
         [B("➕ Add Funds", "recharge"), B("👤 My Profile", "stats")],
     ]
     if SUPPORT_LINK:
