@@ -308,8 +308,8 @@ async def monitor_loop(interval: int = 300):
                         "🔔 <b>Back in Stock!</b>\n"
                         "━━━━━━━━━━━━━━━━━━━━\n"
                         f"<blockquote>🌍 <b>Country:</b> {flag_for(name_raw)} {name}\n"
-                        f"📊 <b>Stock:</b> {stock} accounts\n"
-                        f"🏷️ <b>Price:</b> ₹{price:g}</blockquote>\n"
+                        f"📊 <b>Stock:</b> {format_stock_count(stock)} accounts\n"
+                        f"🏷️ <b>Price:</b> ₹{format_inr(row.get('my_price'))}</blockquote>\n"
                         "<i>Grab it before it runs out!</i>"
                     )
                     markup = InlineKeyboardMarkup(inline_keyboard=[
@@ -373,8 +373,8 @@ async def monitor_loop(interval: int = 300):
                         "━━━━━━━━━━━━━━━━━━━━\n"
                         f"<blockquote>📱 <b>Service:</b> {escape(service_name)}\n"
                         f"🌍 <b>Country:</b> {flag_for(name_raw)} {escape(name_raw)}\n"
-                        f"📊 <b>Stock:</b> {stock} numbers\n"
-                        f"🏷️ <b>Price:</b> ₹{price:g}</blockquote>\n"
+                        f"📊 <b>Stock:</b> {format_stock_count(stock)} numbers\n"
+                        f"🏷️ <b>Price:</b> ₹{format_inr(row.get('my_price'))}</blockquote>\n"
                         "<i>Grab it before it runs out!</i>"
                     )
                     markup = InlineKeyboardMarkup(inline_keyboard=[
