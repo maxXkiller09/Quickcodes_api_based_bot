@@ -10,6 +10,7 @@
 """Five-minute Server 2/3 restock monitoring and user alerts."""
 import asyncio
 import logging
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from html import escape
 
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -210,6 +211,33 @@ async def _broadcast_restock(service_name: str, text: str, markup):
     if batch:
         await asyncio.gather(*batch)
     logging.info("Restock alert broadcast service=%s sent=%d muted=%d failed=%d", service_name, sent, skipped, failed)
+
+
+def format_stock_count(value) -> str:
+    """Format stock as a readable whole-number count without changing its value."""
+    try:
+        return f"{max(0, int(value or 0)):,}"
+    except (TypeError, ValueError, OverflowError):
+        return "0"
+
+
+def format_inr(value) -> str:
+    """Format a rupee amount in Indian grouping; never expose scientific notation."""
+    try:
+        amount = Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if not amount.is_finite() or amount < 0:
+            return "0.00"
+    except (InvalidOperation, TypeError, ValueError):
+        return "0.00"
+    whole, fraction = f"{amount:.2f}".split(".")
+    if len(whole) > 3:
+        last_three, rest = whole[-3:], whole[:-3]
+        groups = []
+        while rest:
+            groups.append(rest[-2:])
+            rest = rest[:-2]
+        whole = ",".join(reversed(groups)) + "," + last_three
+    return f"{whole}.{fraction}"
 
 
 def poll_delay(interval: int, elapsed: float) -> float:
