@@ -107,7 +107,7 @@ async def render_root(target):
         sid = next((s for s, e in cat.items() if norm(e["name"]) == norm(wanted)), None)
         if sid and sid not in seen:
             pinned.append((wanted, sid)); seen.add(sid)
-    text = (f"💜 <b>NEXORA · OTP SERVICES</b>\n{LINE}\n"
+    text = (f"◇ <b>NEXORA · OTP SERVICES</b>\n{LINE}\n"
             f"<blockquote>⚡ <b>{len(cat):,}+</b> apps and platforms\n"
             "🌍 Choose a country and check the live price\n"
             "📩 OTP arrives right here in this chat\n"
@@ -158,7 +158,7 @@ async def render_browse(target, page):
     pages = max(1, (len(items) + PER_SERVICES - 1) // PER_SERVICES)
     page = max(0, min(page, pages - 1))
     chunk_ = items[page * PER_SERVICES:(page + 1) * PER_SERVICES]
-    text = (f"💜 <b>ALL AVAILABLE SERVICES ({len(items):,} total)</b>\n<i>Page {page + 1} of {pages}</i>\n"
+    text = (f"◇ <b>ALL AVAILABLE SERVICES ({len(items):,} total)</b>\n<i>Page {page + 1} of {pages}</i>\n"
             "Tap any service to see countries &amp; live pricing:")
     rows = chunk([B(e["name"][:28], f"s3s:{sid}:0") for sid, e in chunk_], 2)
     nav = []
@@ -247,7 +247,7 @@ async def render_countries(target, sid, page=0, query=None, full=False, catalog=
     pages = max(1, (len(rows) + PER_COUNTRIES - 1) // PER_COUNTRIES)
     page = max(0, min(page, pages - 1))
     shown = rows if query else rows[page * PER_COUNTRIES:(page + 1) * PER_COUNTRIES]
-    text = (f"💜 <b>SERVICE · {title}</b>\n{LINE}\n"
+    text = (f"◇ <b>SERVICE · {title}</b>\n{LINE}\n"
             "Select a country to view available virtual numbers &amp; live rates:\n"
             f"<i>{len(rows)} countries in stock</i>")
     if norm(svc["name"]) == "telegram":
@@ -347,7 +347,7 @@ async def render_operators(target, sid, cid, note=None):
             [B("🌍 Change Country", f"s3s:{sid}:0")],
             [B("🏠 Nexora Home", "back_main")],
         ))
-    text = (f"💜 <b>SELECT OPERATOR</b>\n{LINE}\n"
+    text = (f"◇ <b>SELECT OPERATOR</b>\n{LINE}\n"
             f"• <b>Service:</b> {esc(svc['name'])}\n"
             f"• <b>Country:</b> {flag_for(cname)} {esc(cname)}\n"
             "<blockquote>Prices &amp; stock are live. 🔥 = best price. Get a notification when this country's numbers return after stock reaches zero.</blockquote>")
@@ -436,7 +436,7 @@ async def render_confirm(cq, sid, cid, op):
     price = row["my_price"]
     bal = await get_balance(cq.from_user.id)
     enough = bal >= price
-    text = (f"💜 <b>NUMBER ACTIVATION</b>\n{LINE}\n<blockquote>"
+    text = (f"◇ <b>NUMBER ACTIVATION</b>\n{LINE}\n<blockquote>"
             f"• <b>Service:</b> {esc(cat[sid]['name'])}\n"
             f"• <b>Country:</b> {flag_for(cname)} {esc(cname)}\n"
             f"• <b>Operator:</b> Operator {op}\n"
@@ -460,7 +460,7 @@ def wait_view(task, left):
     filled = round(10 * left / OTP_TIMEOUT)
     bar = "▰" * filled + "▱" * (10 - filled)
     elapsed = OTP_TIMEOUT - left
-    text = ("<blockquote>💜 <b>NUMBER RESERVED</b></blockquote>\n"
+    text = ("<blockquote>◇ <b>NUMBER RESERVED</b></blockquote>\n"
             f"{LINE}\n"
             f"📞 <b>Number:</b> <code>+{esc(task['phone'])}</code>\n"
             f"📦 <b>Service:</b> {esc(task['service'])}\n"
@@ -493,7 +493,7 @@ async def show_completed(task, otp):
     kb = KB([B("📋 Copy OTP", copy=otp)],
             [B("🔄 Buy Again", f"s3o:{task['sid']}:{task['country_id']}:{task['operator']}"),
              B("⬅️ Menu", back_for(task["service"]))])
-    await _edit_task(task, "💜 <b>ORDER COMPLETED</b>\n━━━━━━━━━━━━━━━━━━━━\n"
+    await _edit_task(task, "◇ <b>ORDER COMPLETED</b>\n━━━━━━━━━━━━━━━━━━━━\n"
                            f"📞 <b>Number:</b> <code>+{esc(task['phone'])}</code>\n"
                            f"📦 <b>Service:</b> {esc(task['service'])}\n"
                            f"🌍 <b>Country:</b> {flag_for(task['country'])} {esc(task['country'])} · Operator {esc(task['operator'])}\n"
@@ -568,7 +568,7 @@ async def wp_terms(cq: CallbackQuery, state: FSMContext):
     await state.clear()
     if not await service_on("wa"):
         return await cq.answer("⚠️ WhatsApp is under maintenance. Please try again later!", show_alert=True)
-    text = ("💜 <b>WHATSAPP ACCOUNT · TERMS &amp; CONDITIONS</b>\n––––––—–————––––——–––•\n"
+    text = ("◇ <b>WHATSAPP ACCOUNT · TERMS &amp; CONDITIONS</b>\n––––––—–————––––——–––•\n"
             "<blockquote>These are <b>not ready-made accounts</b> — a <b>fresh new number</b> will be provided from the panel.\n\n"
             "Sometimes you may get an account on your very first buy, and sometimes you may need to try multiple times. "
             "There are a lot of issues because of WhatsApp's security system.\n\n"
