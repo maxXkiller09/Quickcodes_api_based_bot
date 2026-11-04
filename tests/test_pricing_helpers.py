@@ -8,7 +8,7 @@ os.environ.setdefault("DATABASE_URL", "mongodb://localhost:27017")
 os.environ.setdefault("QC_API_BASE", "https://example.invalid")
 os.environ.setdefault("BOT_TITLE", "Nexora Test")
 
-from flows import norm, with_profit
+from flows import is_safe_s3_service, norm, with_profit
 
 
 def test_norm_cleans_case_hyphens_and_repeated_whitespace():
@@ -45,3 +45,8 @@ def test_with_profit_rejects_invalid_or_negative_inputs():
     assert with_profit("NaN", 10) == 0
     assert with_profit(-10, 10) == 0
     assert with_profit(10, -5) == 0
+
+
+def test_betting_provider_is_excluded_from_s3_catalog():
+    assert not is_safe_s3_service("Tipsport Gamechanger")
+    assert is_safe_s3_service("WhatsApp")
