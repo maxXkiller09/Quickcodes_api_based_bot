@@ -89,7 +89,7 @@ async def menu_view():
         rows.append([B("✅ UPI · Auto Verification", "rc:auto")])
     if manual:
         rows.append([B("🧾 UPI · Manual Verification", "rc:manual")])
-    rows.append([B("🏠 Back to Nexora Home", "back_main")])
+    rows.append([B("‹ Home", "back_main")])
     if not (auto or manual or fp):
         return "⚠️ <b>Recharge is currently unavailable.</b>\n<i>Please try again later.</i>", KB(*rows)
     return (f"💳 <b>ADD MONEY TO WALLET</b>\n{SEP}\n"
@@ -114,7 +114,7 @@ async def auto_start(cq: CallbackQuery, state: FSMContext):
     await cq.answer()
     await state.set_state(RC.auto_amount)
     await _replace(cq, f"💰 <b>Enter the amount to add</b>\n<i>Minimum ₹{MIN_AUTO_UPI} · Maximum ₹{MAX_AUTO_UPI:,}</i>",
-                   KB([B("⬅️ Back to Payment Methods", "recharge")]))
+                   KB([B("‹ Payment Methods", "recharge")]))
 
 
 @router.message(StateFilter(RC.auto_amount), F.text, ~F.text.startswith("/"))
@@ -180,7 +180,7 @@ async def got_utr(msg: Message, state: FSMContext):
         if r == "ok":
             await state.clear()
             return await edit(wait, f"✅ <b>Payment received!</b>\n{SEP}\n<b>Added:</b> {fmt_curr(amt)}\n<b>New balance:</b> {fmt_curr(bal)}",
-                              KB([B("🏠 Nexora Home", "back_main")]))
+                              KB([B("‹ Home", "back_main")]))
         if r == "claimed":
             return await edit(wait, "❌ <b>This payment was already credited.</b>", KB([B("Back", "recharge")]))
         return await edit(wait, "⚠️ <b>Something went wrong while crediting.</b> Please contact support.", _not_found_kb())
