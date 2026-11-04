@@ -162,7 +162,11 @@ async def s3_catalog():
             await explain("s3", st, d)
             break
         for s in d.get("services") or []:
-            items[str(s["service"])] = {"name": s["name"]}
+            service_name = str(s.get("name") or "")
+            # Keep the identified betting-related provider out of all S3 menus.
+            if "tipsport" in service_name.lower():
+                continue
+            items[str(s["service"])] = {"name": service_name}
         offset += 200
         if not d.get("services") or offset >= int(d.get("total", 0)):
             break
