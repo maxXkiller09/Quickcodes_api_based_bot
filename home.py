@@ -81,6 +81,25 @@ async def notification_on(message: Message):
     await message.answer(f"🔔 Restock notifications turned on for <b>{esc(service)}</b>.")
 
 
+@router.callback_query(F.data.startswith("stock:stopuser:"))
+async def stop_personal_stock_notifications(cq: CallbackQuery):
+    service_key = cq.data.split(":", 2)[2].strip()
+    if not service_key:
+        return await cq.answer("Invalid service.", show_alert=True)
+    if service_key == "s2":
+        service_name = "Telegram Accounts"
+    else:
+        catalog = await __import__("flows").s3_catalog() or {}
+        service_name = str((catalog.get(service_key) or {}).get("name") or service_key)
+    name = " ".join(service_name.lower().replace("-", " ").split())
+    await stock_alerts.notification_preferences.update_one(
+        {"user_id": int(cq.from_user.id)},
+        {"$addToSet": {"disabled_services": name}},
+        upsert=True,
+    )
+    await cq.answer(f"🔕 {service_name} restock alerts stopped for you.", show_alert=True)
+
+
 @router.callback_query(F.data.startswith("stock:mute:"))
 async def mute_stock_notifications(cq: CallbackQuery):
     if cq.from_user.id not in ADMIN_IDS:
