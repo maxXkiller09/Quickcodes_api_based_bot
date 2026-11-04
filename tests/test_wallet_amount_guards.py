@@ -45,3 +45,11 @@ def test_admin_debit_rejects_zero_and_negative_amounts(monkeypatch):
     monkeypatch.setattr(flows, "users", NoWriteUsers())
     for amount in (0, -1, -0.01):
         assert run(flows.admin_debit(7, amount)) is False
+
+
+
+def test_idempotent_wallet_writes_reject_non_finite_amounts(monkeypatch):
+    monkeypatch.setattr(db, "users", NoWriteUsers())
+    for amount in (float("nan"), float("inf"), -float("inf")):
+        assert run(db.refund_once(7, amount, "refund-test")) == "failed"
+        assert run(db.credit_once(7, amount, "credit-test")) == "failed"
