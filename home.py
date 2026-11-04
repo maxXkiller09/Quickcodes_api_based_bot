@@ -121,20 +121,20 @@ async def home_view(uid, full_name):
     mention = f"<a href='tg://user?id={uid}'>{esc(full_name or 'there')}</a>"
     balance = fmt_curr(u.get('balance', 0))
     text = (
-        f"💜 <b>{esc(BOT_TITLE).upper()}</b>  <code> DIGITAL HUB</code>\n"
+        f"◇ <b>{esc(BOT_TITLE).upper()}</b>  <code> DIGITAL HUB</code>\n"
         f"<i>Your services. Your wallet. All in one place.</i>\n"
         f"{SEP}\n"
         f"Hey {mention} 👋 <b>welcome back</b>\n\n"
-        f"💜 <b>YOUR WALLET</b>\n"
+        f"◇ <b>YOUR WALLET</b>\n"
         f"<blockquote>💰 <b>{balance}</b></blockquote>\n"
         f"✦ <b>EXPLORE SERVICES</b>\n"
         f"<i>Telegram Accounts are available at the current provider rate — no added markup.</i>\n"
         f"\n<code>SECURE  •  SIMPLE  •  QUICK</code>"
     )
     rows = [
-        [B("💜  Telegram Accounts", "buy")],
-        [B("💬  WhatsApp", "wp_terms"), B("📲  Apps OTP", "s3_user_root")],
-        [B("✦  Social Media Services", "feature_smm_external")],
+        [B("✈️  Telegram Accounts", "buy")],
+        [B("🟢  WhatsApp", "wp_terms"), B("📲  Apps OTP", "s3_user_root")],
+        [B("📊  SMM Panel", "feature_smm_external")],
         [B("➕ Add Funds", "recharge"), B("👤 My Profile", "stats")],
     ]
     if SUPPORT_LINK:
@@ -162,7 +162,7 @@ async def profile(cq: CallbackQuery):
     u = await users.find_one({"_id": cq.from_user.id}, {"balance": 1}) or {}
     uname = f"@{esc(cq.from_user.username)}" if cq.from_user.username else "Not set"
     text = (
-        f"💜 <b>MY PROFILE</b>  <code>ACCOUNT</code>\n{SEP}\n"
+        f"◇ <b>MY PROFILE</b>  <code>ACCOUNT</code>\n{SEP}\n"
         f"<blockquote>🧑 <b>Name</b>\n{esc(cq.from_user.full_name or 'User')}</blockquote>\n"
         f"<blockquote>🔗 <b>Username</b>\n{uname}</blockquote>\n"
         f"<blockquote>🆔 <b>User ID</b>\n<code>{cq.from_user.id}</code></blockquote>\n"
@@ -179,7 +179,7 @@ async def profile(cq: CallbackQuery):
 async def history(cq: CallbackQuery):
     rows = await orders.find({"user_id": cq.from_user.id}).sort("date", -1).limit(15).to_list(15)
     if not rows:
-        await edit(cq, f"💜 <b>ORDER HISTORY</b>  <code>RECENT ORDERS</code>\n{SEP}\n\nYou haven't placed an order yet.\n\n<i>Browse services to place your first order.</i>",
+        await edit(cq, f"◇ <b>ORDER HISTORY</b>  <code>RECENT ORDERS</code>\n{SEP}\n\nYou haven't placed an order yet.\n\n<i>Browse services to place your first order.</i>",
                    KB([B("🛍 Browse Services", "back_main")], [B("👤 My Profile", "stats")]))
         return await cq.answer()
     icon = {"tg": "✈️", "wa": "💬", "otp": "📲", "smm": "🌍"}
@@ -189,6 +189,6 @@ async def history(cq: CallbackQuery):
         extra = f" · <code>{esc(o['number'])}</code>" if o.get("number") else ""
         lines.append(f"{icon.get(o.get('type'), '🧾')} <b>{esc(o.get('title', 'Order'))}</b>{extra}\n"
                      f"     {fmt_curr(o.get('price', 0))} · {d.strftime('%d %b %H:%M') if d else ''}")
-    await edit(cq, f"💜 <b>ORDER HISTORY</b>  <code>RECENT ORDERS</code>\n{SEP}\n<i>Latest {len(rows)} orders</i>\n\n" + "\n\n".join(lines),
+    await edit(cq, f"◇ <b>ORDER HISTORY</b>  <code>RECENT ORDERS</code>\n{SEP}\n<i>Latest {len(rows)} orders</i>\n\n" + "\n\n".join(lines),
                KB([B("👤 My Profile", "stats")], [B("🏠 Main Menu", "back_main")]))
     await cq.answer()
