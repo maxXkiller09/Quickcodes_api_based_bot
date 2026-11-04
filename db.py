@@ -20,6 +20,7 @@
 
 
 import copy
+import math
 import time
 from datetime import datetime
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -113,7 +114,7 @@ async def get_balance(uid):
 
 async def charge(uid, amount):
     amount = round(float(amount), 2)
-    if amount <= 0:
+    if not math.isfinite(amount) or amount <= 0:
         return False
     r = await users.update_one({"_id": uid, "balance": {"$gte": amount}}, {"$inc": {"balance": -amount}})
     return r.modified_count == 1
@@ -139,7 +140,7 @@ async def refund_once(uid, amount, refund_id):
     balance increment, so a retry after a crash cannot credit the wallet twice.
     """
     amount = round(float(amount), 2)
-    if amount <= 0 or not refund_id:
+    if not math.isfinite(amount) or amount <= 0 or not refund_id:
         return "failed"
     try:
         result = await users.update_one(
@@ -177,7 +178,7 @@ async def credit_once(uid, amount, credit_id):
     Returns 'applied', 'already_applied', or 'failed'.
     """
     amount = round(float(amount), 2)
-    if amount <= 0 or not credit_id:
+    if not math.isfinite(amount) or amount <= 0 or not credit_id:
         return "failed"
 
     key = str(credit_id)
