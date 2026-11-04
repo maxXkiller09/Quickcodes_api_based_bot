@@ -212,6 +212,11 @@ async def _broadcast_restock(service_name: str, text: str, markup):
     logging.info("Restock alert broadcast service=%s sent=%d muted=%d failed=%d", service_name, sent, skipped, failed)
 
 
+def poll_delay(interval: int, elapsed: float) -> float:
+    """Seconds to wait so stock-poll cycles start at least interval seconds apart."""
+    return max(0.0, max(300, int(interval)) - max(0.0, float(elapsed)))
+
+
 def is_restock_transition(previous_stock, current_stock) -> bool:
     """Return true only for a known zero-to-positive stock transition."""
     if previous_stock is None:
@@ -363,7 +368,7 @@ async def monitor_loop(interval: int = 300):
             logging.info("Restock poll complete: s2_countries=%d s3_countries=%d alerts=%d", checked_s2, checked_s3, alerts)
             # Keep a five-minute start-to-start cadence, not five minutes of
             # extra idle time after a long catalog scan or notification batch.
-            await asyncio.sleep(max(0, max(300, int(interval)) - (loop.time() - cycle_started)))
+            await asyncio.sleep(poll_delay(interval, loop.time() - cycle_started))
         except asyncio.CancelledError:
             raise
         except Exception:
