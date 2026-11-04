@@ -164,7 +164,7 @@ async def s3_catalog():
         for s in d.get("services") or []:
             service_name = str(s.get("name") or "")
             # Keep the identified betting-related provider out of all S3 menus.
-            if "tipsport" in service_name.lower():
+            if not is_safe_s3_service(service_name):
                 continue
             items[str(s["service"])] = {"name": service_name}
         offset += 200
@@ -178,6 +178,11 @@ async def s3_catalog():
 
 def norm(s):
     return " ".join(str(s or "").lower().replace("-", " ").split())
+
+
+def is_safe_s3_service(name):
+    """Exclude the identified betting provider from the customer-facing catalog."""
+    return "tipsport" not in norm(name)
 
 
 def find_service(cat, wanted):
