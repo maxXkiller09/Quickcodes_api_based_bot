@@ -82,7 +82,7 @@ async def need_catalog(cq):
 async def render_main(target, uid):
     cat = await smm_catalog()
     apps = [(k, n, e) for k, n, e in APPS if k in cat["apps"]]
-    text = (f"💜 <b>NEXORA · SOCIAL SERVICES</b>\n{SEP}\n"
+    text = (f"◇ <b>NEXORA · SOCIAL SERVICES</b>\n{SEP}\n"
             "<blockquote>🔎 Choose a platform, then a category and service.\n"
             "💰 Price and order limits are shown before you confirm.\n"
             "📦 Track placed orders from <b>My Orders</b>.</blockquote>\n"
@@ -132,7 +132,7 @@ async def app_view(cq: CallbackQuery, state: FSMContext):
         rows.append(pr)
     rows.append([B(f"🔎 Search in {meta[0]}", f"sm_sin:{slug}")])
     rows.append([B("⬅️ Back to Apps", "feature_smm_external")])
-    await edit(cq, f"💜 <b>{meta[1]} {esc(meta[0])}</b>\n{SEP}\n<i>Select a category:</i>", KB(*rows))
+    await edit(cq, f"◇ <b>{meta[1]} {esc(meta[0])}</b>\n{SEP}\n<i>Select a category:</i>", KB(*rows))
     await cq.answer()
 
 
@@ -156,7 +156,7 @@ async def cat_view(cq: CallbackQuery, state: FSMContext):
     if pr:
         rows.append(pr)
     rows.append([B("⬅️ Back", f"sm_app:{slug}:0")])
-    await edit(cq, f"💜 <b>📂 {esc(short(name, 60))}</b>\n{SEP}\n"
+    await edit(cq, f"◇ <b>📂 {esc(short(name, 60))}</b>\n{SEP}\n"
                    f"<i>{len(services)} services · price per 1000 shown · cheapest first</i>", KB(*rows))
     await cq.answer()
 
@@ -219,7 +219,7 @@ async def render_search(data, page):
         rows.append(pr)
     rows.append([B("🔎 New Search", "sm_ssrv")])
     rows.append([B("⬅️ Back to Apps", "feature_smm_external")])
-    return (f"💜 <b>SEARCH RESULTS · '{esc(q)}'</b>\n{SEP}\n<i>{len(res)} services found · tap one to order</i>", KB(*rows), page)
+    return (f"◇ <b>SEARCH RESULTS · '{esc(q)}'</b>\n{SEP}\n<i>{len(res)} services found · tap one to order</i>", KB(*rows), page)
 
 
 @router.message(StateFilter(SMMState.waiting_srv_search), F.text, ~F.text.startswith("/"))
@@ -258,7 +258,7 @@ async def service_details(cq: CallbackQuery, state: FSMContext):
     pct = await profit_pct("smm")
     back = (await state.get_data()).get("back") or "feature_smm_external"
     limits = "Fixed package" if is_package(srv) else f"Min {srv['min']:,} / Max {srv['max']:,}"
-    text = (f"💜 <b>SERVICE DETAILS</b>\n{SEP}\n"
+    text = (f"◇ <b>SERVICE DETAILS</b>\n{SEP}\n"
             f"<blockquote><b>📱 App:</b> {esc(APP_META.get(srv.get('app') or 'others', ('Others',))[0])}\n"
             f"<b>🏷️ Service:</b> {esc(srv['name'])}\n"
             f"<b>🆔 ID:</b> <code>{srv['service']}</code>\n"
@@ -364,7 +364,7 @@ async def send_overview(msg, state, uid):
     bal = await get_balance(uid)
     qty_line = "Package" if is_package(srv) else f"{qty:,}" + (" comments" if needs_comments(srv) else "")
     warn = f"\n⚠️ <b>Insufficient wallet balance.</b> You need {fmt_curr(cost - bal)} more.\n" if bal < cost else ""
-    text = (f"💜 <b>ORDER OVERVIEW</b>\n{SEP}\n"
+    text = (f"◇ <b>ORDER OVERVIEW</b>\n{SEP}\n"
             f"<blockquote><b>🏷️ Service:</b> {esc(srv['name'])}\n<b>🔗 Link:</b> {esc(data['link'])}\n"
             f"<b>🔢 Quantity:</b> {qty_line}\n<b>💰 Total Cost:</b> {fmt_curr(cost)}\n"
             f"<b>💳 Wallet:</b> {fmt_curr(bal)}</blockquote>{warn}\n"
@@ -403,7 +403,7 @@ async def exec_order(cq: CallbackQuery, state: FSMContext):
         qty_txt = "Package" if o.get("package") else format(o["qty"], ",")
         await state.clear()
         return await edit(cq,
-            f"<b>💜 Order Confirmed!</b>\n{SEP}\n"
+            f"<b>◇ Order Confirmed!</b>\n{SEP}\n"
             f"<blockquote><b>🆔 Order ID:</b> <code>{o['order_id']}</code>\n<b>🏷️ Service:</b> {esc(o['service'])}\n"
             f"<b>🔢 Qty:</b> {qty_txt}\n"
             f"<b>💸 Paid:</b> {fmt_curr(o['cost'])}</blockquote>\n\n"
