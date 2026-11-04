@@ -242,7 +242,7 @@ def format_inr(value) -> str:
 
 def poll_delay(interval: int, elapsed: float) -> float:
     """Seconds to wait so stock-poll cycles start at least interval seconds apart."""
-    return max(0.0, max(300, int(interval)) - max(0.0, float(elapsed)))
+    return max(0.0, max(600, int(interval)) - max(0.0, float(elapsed)))
 
 
 def is_restock_transition(previous_stock, current_stock) -> bool:
@@ -263,7 +263,7 @@ async def stop_all(user_id: int):
     await s3_subscriptions.update_many({"user_id": int(user_id), "active": True}, {"$set": {"active": False}})
 
 
-async def monitor_loop(interval: int = 300):
+async def monitor_loop(interval: int = 600):
     """Broadcast stock transitions to all users by default; users may mute each service."""
     await init_stock_alerts()
     logging.info("Restock monitor started; interval=%ss; notifications default ON", max(300, int(interval)))
