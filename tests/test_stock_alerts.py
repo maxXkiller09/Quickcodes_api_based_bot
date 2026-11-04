@@ -1,10 +1,19 @@
 """Unit tests for back-in-stock transition detection."""
 import unittest
 
-from stock_alerts import is_restock_transition, poll_delay
+from stock_alerts import is_restock_transition, poll_delay, format_stock_count, format_inr
 
 
 class RestockTransitionTests(unittest.TestCase):
+    def test_stock_count_uses_thousands_separators(self):
+        self.assertEqual(format_stock_count(1054684), "1,054,684")
+
+    def test_price_formats_scientific_notation_as_inr(self):
+        self.assertEqual(format_inr(3.26747e6), "32,67,470.00")
+
+    def test_price_formats_decimal_without_changing_value(self):
+        self.assertEqual(format_inr("3267470.5"), "32,67,470.50")
+
     def test_poll_runs_every_five_minutes_start_to_start(self):
         self.assertEqual(poll_delay(300, 0), 300)
         self.assertEqual(poll_delay(300, 90), 210)
