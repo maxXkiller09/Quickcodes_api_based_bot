@@ -31,7 +31,7 @@ def test_charge_rejects_zero_and_negative_amounts(monkeypatch):
 
 def test_refund_rejects_zero_and_negative_amounts(monkeypatch):
     monkeypatch.setattr(db, "users", NoWriteUsers())
-    for amount in (0, -1, -0.01):
+    for amount in (0, -1, -0.01, float("nan"), float("inf"), -float("inf")):
         assert run(db.refund(7, amount)) is False
 
 
