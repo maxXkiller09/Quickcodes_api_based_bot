@@ -16,6 +16,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from db import db, users
 from flows import s2_view, s3_catalog, s3_countries
 import notify
+from flags import flag_for
 
 subscriptions = db["stock_alert_subscriptions"]
 snapshots = db["stock_alert_snapshots"]
@@ -152,6 +153,11 @@ async def _broadcast_restock(service_name: str, text: str, markup):
         logging.error("Restock alert skipped: Telegram bot is not initialized")
         return
     sent = skipped = failed = 0
+    prefs_by_user = {}
+    async for pref_row in notification_preferences.find(
+        {"user_id": {"$ne": "global"}}, {"user_id": 1, "disabled_services": 1}
+    ):
+        prefs_by_user[pref_row.get("user_id")] = pref_row.get("disabled_services") or []
     # Notification policy is global and identical for every user. Read it once
     # per broadcast instead of issuing one MongoDB query for every recipient.
     pref = await notification_preferences.find_one(
@@ -173,7 +179,11 @@ async def _broadcast_restock(service_name: str, text: str, markup):
         if uid is None:
             continue
         try:
-            if not enabled:
+            user_disabled = {
+                " ".join(str(value).strip().lower().replace("-", " ").split())
+                for value in prefs_by_user.get(int(uid), [])
+            }
+            if not enabled or "*" in user_disabled or aliases.intersection(user_disabled):
                 skipped += 1
                 continue
             await bot.send_message(int(uid), text, reply_markup=markup, parse_mode="HTML")
@@ -251,7 +261,7 @@ async def monitor_loop(interval: int = 300):
                     )
                     markup = InlineKeyboardMarkup(inline_keyboard=[
                         [InlineKeyboardButton(text="🛒 Buy Now", callback_data=f"s2:country:{code}")],
-                        [InlineKeyboardButton(text="🔕 Turn off Telegram Accounts", callback_data="stock:mute:s2")],
+                        [InlineKeyboardButton(text="🔔 Stop Notification", callback_data="stock:stopuser:s2")],
                     ])
                     alerts += 1
                     await _broadcast_restock("Telegram Accounts", text, markup)
@@ -316,7 +326,7 @@ async def monitor_loop(interval: int = 300):
                     )
                     markup = InlineKeyboardMarkup(inline_keyboard=[
                         [InlineKeyboardButton(text="🛒 View Numbers", callback_data=f"s3c:{sid}:{code}")],
-                        [InlineKeyboardButton(text=f"🔕 Turn off {service_name[:30]}", callback_data=f"stock:mute:{sid}")],
+                        [InlineKeyboardButton(text="🔔 Stop Notification", callback_data=f"stock:stopuser:{sid}")],
                     ])
                     alerts += 1
                     await _broadcast_restock(service_name, text, markup)
