@@ -42,7 +42,7 @@ async def _mark_api_down(server):
 
 async def _mark_api_recovered(server):
     since = _API_DOWN.pop(server, None)
-    if since is not None:
+    if since is not None and server != "s3":
         duration = int(time.time() - since)
         await notify.alert_admins(
             f"🟢 <b>Quick Codes API recovered</b> — {NAMES[server] if server in NAMES else server}. "
@@ -71,7 +71,7 @@ async def close_session():
         await _session.close()
 
 
-async def qc(server, method, path, params=None, json=None, timeout=30, key=None):
+async def qc(server, method, path, params=None, json=None, timeout=30, key=None, _retry=0):
     """-> (http_status, dict). http_status 0 = could not reach the API at all."""
     if key is None:
         key = ((await get_settings())["api_keys"].get(server) or "").strip()
@@ -101,12 +101,24 @@ async def qc(server, method, path, params=None, json=None, timeout=30, key=None)
         elapsed = time.perf_counter() - started
         logging.warning("[api-timeout] server=%s method=%s path=%s elapsed=%.2fs",
                         server, method.upper(), path, elapsed)
+        if server == "s3" and method.upper() == "GET" and _retry < 2:
+            await asyncio.sleep(1 + _retry)
+            return await qc(server, method, path, params=params, json=json,
+                            timeout=timeout, key=key, _retry=_retry + 1)
         return 0, {"ok": False, "error": "timeout", "message": "API did not answer in time"}
     except aiohttp.ClientError as e:
         await _mark_api_down(server)
+        if server == "s3" and method.upper() == "GET" and _retry < 2:
+            await asyncio.sleep(1 + _retry)
+            return await qc(server, method, path, params=params, json=json,
+                            timeout=timeout, key=key, _retry=_retry + 1)
         return 0, {"ok": False, "error": "network", "message": f"Cannot reach API: {e!r}"}
     except Exception as e:
         await _mark_api_down(server)
+        if server == "s3" and method.upper() == "GET" and _retry < 2:
+            await asyncio.sleep(1 + _retry)
+            return await qc(server, method, path, params=params, json=json,
+                            timeout=timeout, key=key, _retry=_retry + 1)
         return 0, {"ok": False, "error": "network", "message": f"{e!r}"}
 
 
@@ -136,6 +148,9 @@ async def explain(server, status, data):
     if err == "rate_limited":
         return "busy", "⚠️ Too many requests. Please try again in a few seconds.\n<i>You were not charged.</i>"
     if status == 0:
+        if server == "s3":
+            logging.warning("[api-unavailable] server=s3; read request retries exhausted")
+            return "network", BUSY_USER
         await notify.alert_admins(f"⚠️ Cannot reach the Quick Codes API for {NAMES[server]}.\n"
                                   f"<code>{(data or {}).get('message')}</code>", key=f"net:{server}", every=1800)
         return "network", BUSY_USER
