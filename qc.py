@@ -32,7 +32,23 @@ import notify
 
 _session = None
 _session_lock = asyncio.Lock()
-BUSY_USER = "⚠️ <b>Service temporarily unavailable.</b>\nPlease try again later. <i>You were not charged.</i>"
+BUSY_USER = "⚠️ <b>Service temporarily unavailable.</b>\\nPlease try again later. <i>You were not charged.</i>"
+_API_DOWN = {}
+
+
+async def _mark_api_down(server):
+    _API_DOWN.setdefault(server, time.time())
+
+
+async def _mark_api_recovered(server):
+    since = _API_DOWN.pop(server, None)
+    if since is not None:
+        duration = int(time.time() - since)
+        await notify.alert_admins(
+            f"🟢 <b>Quick Codes API recovered</b> — {NAMES[server] if server in NAMES else server}. "
+            f"Connection is responding again (outage window about {duration}s).",
+            key=f"recovered:{server}", every=60,
+        )
 
 
 async def _sess():
@@ -116,6 +132,6 @@ async def explain(server, status, data):
         return "busy", "⚠️ Too many requests. Please try again in a few seconds.\n<i>You were not charged.</i>"
     if status == 0:
         await notify.alert_admins(f"⚠️ Cannot reach the Quick Codes API for {NAMES[server]}.\n"
-                                  f"<code>{(data or {}).get('message')}</code>", key=f"net:{server}", every=300)
+                                  f"<code>{(data or {}).get('message')}</code>", key=f"net:{server}", every=1800)
         return "network", BUSY_USER
     return "other", "⚠️ <b>Server busy.</b> Please try again shortly.\n<i>You were not charged.</i>"
