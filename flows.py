@@ -22,6 +22,7 @@
 """All money-moving logic (no Telegram code here, so it can be tested on its own)."""
 import asyncio
 import time
+from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_HALF_EVEN
 from db import (orders, tasks, smm_orders, users, profit_pct, charge, refund, refund_once, get_balance, utcnow, get_settings)
 from qc import qc, explain, BUSY_USER
 import notify
@@ -31,11 +32,18 @@ CANCEL_LOCK = 180      # user may cancel only after this many seconds without OT
 
 
 def with_profit(price, pct, whole=False):
-    price = float(price or 0)
-    if not pct:
-        return round(price, 2)
-    v = price * (1 + float(pct) / 100.0)
-    return float(int(v) if v == int(v) else int(v) + 1) if whole else round(v + 1e-9, 2)
+    """Apply markup with decimal arithmetic, then round once for customer pricing."""
+    try:
+        base = Decimal(str(price if price is not None else 0))
+        markup = Decimal(str(pct if pct is not None else 0))
+        if not base.is_finite() or not markup.is_finite() or base < 0 or markup < 0:
+            raise InvalidOperation
+        total = base * (Decimal("1") + markup / Decimal("100"))
+        if whole:
+            return int(total.to_integral_value(rounding=ROUND_CEILING))
+        return float(total.quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN))
+    except (InvalidOperation, TypeError, ValueError):
+        return 0
 
 
 async def _record(order):
