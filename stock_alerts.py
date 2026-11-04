@@ -174,10 +174,13 @@ async def _broadcast_restock(service_name: str, text: str, markup):
     if name in {"whatsapp", "whatsapp accounts", "server 3", "s3"}:
         aliases.update({"whatsapp", "whatsapp accounts"})
     enabled = "*" not in disabled and not aliases.intersection(disabled)
-    async for user in users.find({}, {"_id": 1}):
-        uid = user.get("_id")
-        if uid is None:
-            continue
+    # Send in small bounded batches. Sequential delivery made a large broadcast
+    # hold up the next stock scan; unbounded gather would overload Telegram/Render.
+    semaphore = asyncio.Semaphore(8)
+    batch = []
+
+    async def deliver(uid):
+        nonlocal sent, skipped, failed
         try:
             user_disabled = {
                 " ".join(str(value).strip().lower().replace("-", " ").split())
@@ -185,12 +188,27 @@ async def _broadcast_restock(service_name: str, text: str, markup):
             }
             if not enabled or "*" in user_disabled or aliases.intersection(user_disabled):
                 skipped += 1
-                continue
-            await bot.send_message(int(uid), text, reply_markup=markup, parse_mode="HTML")
+                return
+            async with semaphore:
+                await asyncio.wait_for(
+                    bot.send_message(int(uid), text, reply_markup=markup, parse_mode="HTML"),
+                    timeout=12,
+                )
             sent += 1
         except Exception as exc:
             failed += 1
             logging.warning("Restock delivery failed service=%s user=%s error=%r", service_name, uid, exc)
+
+    async for user in users.find({}, {"_id": 1}):
+        uid = user.get("_id")
+        if uid is None:
+            continue
+        batch.append(asyncio.create_task(deliver(uid)))
+        if len(batch) >= 32:
+            await asyncio.gather(*batch)
+            batch.clear()
+    if batch:
+        await asyncio.gather(*batch)
     logging.info("Restock alert broadcast service=%s sent=%d muted=%d failed=%d", service_name, sent, skipped, failed)
 
 
@@ -216,7 +234,9 @@ async def monitor_loop(interval: int = 300):
     """Broadcast stock transitions to all users by default; users may mute each service."""
     await init_stock_alerts()
     logging.info("Restock monitor started; interval=%ss; notifications default ON", max(300, int(interval)))
+    loop = asyncio.get_running_loop()
     while True:
+        cycle_started = loop.time()
         try:
             checked_s2 = checked_s3 = alerts = 0
             # Server 2: provider country endpoint includes stock counts, including zero-stock rows.
@@ -341,9 +361,11 @@ async def monitor_loop(interval: int = 300):
                             {"$set": {"stock": 0}},
                         )
             logging.info("Restock poll complete: s2_countries=%d s3_countries=%d alerts=%d", checked_s2, checked_s3, alerts)
-            await asyncio.sleep(max(300, int(interval)))
+            # Keep a five-minute start-to-start cadence, not five minutes of
+            # extra idle time after a long catalog scan or notification batch.
+            await asyncio.sleep(max(0, max(300, int(interval)) - (loop.time() - cycle_started)))
         except asyncio.CancelledError:
             raise
         except Exception:
             logging.exception("Restock monitor iteration failed")
-            await asyncio.sleep(max(300, int(interval)))
+            await asyncio.sleep(max(0, max(300, int(interval)) - (loop.time() - cycle_started)))
