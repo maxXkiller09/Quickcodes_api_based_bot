@@ -252,7 +252,7 @@ async def monitor_loop(interval: int = 300):
                     name = escape(name_raw)
                     price = float(row.get("my_price") or 0)
                     text = (
-                        "🔔 <b>Back in Stock!</b>\n"
+                        "💜 <b>BACK IN STOCK</b>  <code>RESTOCK ALERT</code>\n"
                         "━━━━━━━━━━━━━━━━━━━━\n"
                         f"<blockquote>🌍 <b>Country:</b> {flag_for(name_raw)} {name}\n"
                         f"📊 <b>Stock:</b> {stock} accounts\n"
@@ -260,8 +260,8 @@ async def monitor_loop(interval: int = 300):
                         "<i>Grab it before it runs out!</i>"
                     )
                     markup = InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="🛒 Buy Now", callback_data=f"s2:country:{code}")],
-                        [InlineKeyboardButton(text="🔔 Stop Notification", callback_data="stock:stopuser:s2")],
+                        [InlineKeyboardButton(text="💜 Buy Now", callback_data=f"s2:country:{code}")],
+                        [InlineKeyboardButton(text="🔕 Mute My Alerts", callback_data="stock:stopuser:s2")],
                     ])
                     alerts += 1
                     await _broadcast_restock("Telegram Accounts", text, markup)
@@ -316,7 +316,7 @@ async def monitor_loop(interval: int = 300):
                     if not is_restock_transition(old.get("stock") if old else None, stock):
                         continue
                     text = (
-                        "🔔 <b>Back in Stock!</b>\n"
+                        "💜 <b>BACK IN STOCK</b>  <code>RESTOCK ALERT</code>\n"
                         "━━━━━━━━━━━━━━━━━━━━\n"
                         f"<blockquote>📱 <b>Service:</b> {escape(service_name)}\n"
                         f"🌍 <b>Country:</b> {flag_for(name_raw)} {escape(name_raw)}\n"
@@ -325,8 +325,8 @@ async def monitor_loop(interval: int = 300):
                         "<i>Grab it before it runs out!</i>"
                     )
                     markup = InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="🛒 View Numbers", callback_data=f"s3c:{sid}:{code}")],
-                        [InlineKeyboardButton(text="🔔 Stop Notification", callback_data=f"stock:stopuser:{sid}")],
+                        [InlineKeyboardButton(text="💜 View Numbers", callback_data=f"s3c:{sid}:{code}")],
+                        [InlineKeyboardButton(text="🔕 Mute My Alerts", callback_data=f"stock:stopuser:{sid}")],
                     ])
                     alerts += 1
                     await _broadcast_restock(service_name, text, markup)
