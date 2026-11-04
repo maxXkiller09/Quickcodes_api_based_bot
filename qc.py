@@ -32,7 +32,7 @@ import notify
 
 _session = None
 _session_lock = asyncio.Lock()
-BUSY_USER = "⚠️ <b>Service temporarily unavailable.</b>\\nPlease try again later. <i>You were not charged.</i>"
+BUSY_USER = "⚠️ <b>Service temporarily unavailable.</b>\nPlease try again later. <i>You were not charged.</i>"
 _API_DOWN = {}
 
 
@@ -88,20 +88,25 @@ async def qc(server, method, path, params=None, json=None, timeout=30, key=None)
                 data = {"ok": False, "error": "bad_response", "message": "Invalid response from API"}
             if not isinstance(data, dict):
                 data = {"ok": False, "error": "bad_response", "message": "Invalid response from API"}
+            if r.status < 500 and data.get("ok"):
+                await _mark_api_recovered(server)
             elapsed = time.perf_counter() - started
             if elapsed >= 5:
                 logging.warning("[api-slow] server=%s method=%s path=%s status=%s elapsed=%.2fs",
                                 server, method.upper(), path, r.status, elapsed)
             return r.status, data
     except asyncio.TimeoutError:
+        await _mark_api_down(server)
         # the request may or may not have been processed -> callers treat money actions carefully
         elapsed = time.perf_counter() - started
         logging.warning("[api-timeout] server=%s method=%s path=%s elapsed=%.2fs",
                         server, method.upper(), path, elapsed)
         return 0, {"ok": False, "error": "timeout", "message": "API did not answer in time"}
     except aiohttp.ClientError as e:
+        await _mark_api_down(server)
         return 0, {"ok": False, "error": "network", "message": f"Cannot reach API: {e!r}"}
     except Exception as e:
+        await _mark_api_down(server)
         return 0, {"ok": False, "error": "network", "message": f"{e!r}"}
 
 
