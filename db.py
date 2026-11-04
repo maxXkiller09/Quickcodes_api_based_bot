@@ -109,7 +109,11 @@ async def profit_pct(server):
 # ---------- wallet (atomic) ----------
 async def get_balance(uid):
     u = await users.find_one({"_id": uid}, {"balance": 1}) or {}
-    return round(float(u.get("balance", 0.0)), 2)
+    try:
+        balance = float(u.get("balance", 0.0))
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+    return round(balance, 2) if math.isfinite(balance) else 0.0
 
 
 def _wallet_amount(value):
