@@ -82,3 +82,38 @@ def test_smm_catalog_is_cached_and_avoids_repeat_api_calls(monkeypatch):
 
 async def _unexpected_explain(*args, **kwargs):
     raise AssertionError("explain() should not be called for successful fake API responses")
+
+
+
+def test_s2_forced_refresh_does_not_return_stale_rows(monkeypatch):
+    async def failed_qc(*args, **kwargs):
+        return 0, {"ok": False, "error": "timeout"}
+
+    async def fake_explain(*args, **kwargs):
+        return "network", "busy"
+
+    monkeypatch.setattr(flows, "qc", failed_qc)
+    monkeypatch.setattr(flows, "explain", fake_explain)
+    monkeypatch.setattr(flows, "_s2", {
+        "t": time.time(), "rows": [{"country_code": "IN", "stock": 0}]
+    })
+
+    assert asyncio.run(flows.s2_rows(force=True)) is None
+
+
+def test_s3_forced_refresh_does_not_return_stale_countries(monkeypatch):
+    async def failed_qc(*args, **kwargs):
+        return 0, {"ok": False, "error": "timeout"}
+
+    async def fake_explain(*args, **kwargs):
+        return "network", "busy"
+
+    monkeypatch.setattr(flows, "qc", failed_qc)
+    monkeypatch.setattr(flows, "explain", fake_explain)
+    monkeypatch.setattr(flows, "_cty3", {
+        ("7", True): {"t": time.time(), "rows": [{"country": "IN", "stock": 0}]}
+    })
+
+    assert asyncio.run(
+        flows.s3_countries("7", full=True, force=True, include_empty=True)
+    ) is None
