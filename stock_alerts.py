@@ -7,7 +7,7 @@
 # Authorized modifications retain original author and brand credits.
 # ============================================================================
 
-"""Five-minute Server 2/3 restock monitoring and user alerts."""
+"""Ten-minute Server 2/3 restock monitoring and user alerts."""
 import asyncio
 import logging
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -241,7 +241,7 @@ def format_inr(value) -> str:
 
 
 def poll_delay(interval: int, elapsed: float) -> float:
-    """Seconds to wait so stock-poll cycles start at least interval seconds apart."""
+    """Seconds to wait so stock-poll cycles start at least interval seconds apart (10m minimum)."""
     return max(0.0, max(600, int(interval)) - max(0.0, float(elapsed)))
 
 
@@ -394,7 +394,7 @@ async def monitor_loop(interval: int = 600):
                             {"$set": {"stock": 0}},
                         )
             logging.info("Restock poll complete: s2_countries=%d s3_countries=%d alerts=%d", checked_s2, checked_s3, alerts)
-            # Keep a five-minute start-to-start cadence, not five minutes of
+            # Keep a ten-minute start-to-start cadence, not ten minutes of
             # extra idle time after a long catalog scan or notification batch.
             await asyncio.sleep(poll_delay(interval, loop.time() - cycle_started))
         except asyncio.CancelledError:
