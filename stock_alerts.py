@@ -266,7 +266,7 @@ async def stop_all(user_id: int):
 async def monitor_loop(interval: int = 600):
     """Broadcast stock transitions to all users by default; users may mute each service."""
     await init_stock_alerts()
-    logging.info("Restock monitor started; interval=%ss; notifications default ON", max(300, int(interval)))
+    logging.info("Restock monitor started; interval=%ss; notifications default ON", max(600, int(interval)))
     loop = asyncio.get_running_loop()
     while True:
         cycle_started = loop.time()
@@ -401,4 +401,4 @@ async def monitor_loop(interval: int = 600):
             raise
         except Exception:
             logging.exception("Restock monitor iteration failed")
-            await asyncio.sleep(max(0, max(300, int(interval)) - (loop.time() - cycle_started)))
+            await asyncio.sleep(max(0, max(600, int(interval)) - (loop.time() - cycle_started)))
