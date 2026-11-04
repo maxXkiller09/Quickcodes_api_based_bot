@@ -254,9 +254,9 @@ async def monitor_loop(interval: int = 300):
                     text = (
                         "🔔 <b>Back in Stock!</b>\n"
                         "━━━━━━━━━━━━━━━━━━━━\n"
-                        f"🌍 <b>Country:</b> {name}\n"
+                        f"<blockquote>🌍 <b>Country:</b> {flag_for(name_raw)} {name}\n"
                         f"📊 <b>Stock:</b> {stock} accounts\n"
-                        f"🏷️ <b>Price:</b> ₹{price:g}\n\n"
+                        f"🏷️ <b>Price:</b> ₹{price:g}</blockquote>\n"
                         "<i>Grab it before it runs out!</i>"
                     )
                     markup = InlineKeyboardMarkup(inline_keyboard=[
@@ -318,11 +318,11 @@ async def monitor_loop(interval: int = 300):
                     text = (
                         "🔔 <b>Back in Stock!</b>\n"
                         "━━━━━━━━━━━━━━━━━━━━\n"
-                        f"📱 <b>Service:</b> {escape(service_name)}\n"
-                        f"🌍 <b>Country:</b> {escape(name_raw)}\n"
+                        f"<blockquote>📱 <b>Service:</b> {escape(service_name)}\n"
+                        f"🌍 <b>Country:</b> {flag_for(name_raw)} {escape(name_raw)}\n"
                         f"📊 <b>Stock:</b> {stock} numbers\n"
-                        f"🏷️ <b>Starting price:</b> ₹{price:g}\n\n"
-                        "<i>Numbers are available again. Check live offers before buying.</i>"
+                        f"🏷️ <b>Price:</b> ₹{price:g}</blockquote>\n"
+                        "<i>Grab it before it runs out!</i>"
                     )
                     markup = InlineKeyboardMarkup(inline_keyboard=[
                         [InlineKeyboardButton(text="🛒 View Numbers", callback_data=f"s3c:{sid}:{code}")],
