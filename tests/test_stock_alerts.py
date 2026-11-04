@@ -1,7 +1,10 @@
 """Unit tests for back-in-stock transition detection."""
 import unittest
 
-from stock_alerts import is_restock_transition, poll_delay, format_stock_count, format_inr
+from stock_alerts import (
+    is_restock_transition, poll_delay, format_stock_count, format_inr,
+    is_whatsapp_service, WHATSAPP_CHECK_INTERVAL,
+)
 
 
 class RestockTransitionTests(unittest.TestCase):
@@ -23,6 +26,15 @@ class RestockTransitionTests(unittest.TestCase):
 
     def test_poll_interval_never_falls_below_ten_minutes(self):
         self.assertEqual(poll_delay(60, 10), 590)
+
+    def test_whatsapp_is_the_only_server_three_stock_alert_service(self):
+        self.assertTrue(is_whatsapp_service("WhatsApp"))
+        self.assertTrue(is_whatsapp_service(" whatsapp "))
+        self.assertFalse(is_whatsapp_service("Telegram OTP"))
+        self.assertFalse(is_whatsapp_service("Tipsport Gamechanger"))
+
+    def test_whatsapp_stock_check_is_hourly(self):
+        self.assertEqual(WHATSAPP_CHECK_INTERVAL, 3600)
 
     def test_first_snapshot_does_not_trigger(self):
         self.assertFalse(is_restock_transition(None, 5))
