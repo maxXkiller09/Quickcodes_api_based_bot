@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import math
 
 os.environ.setdefault("BOT_TOKEN", "123456:TEST_TOKEN_NOT_FOR_REAL_USE")
 os.environ.setdefault("ADMIN_IDS", "1")
@@ -24,7 +25,7 @@ class NoWriteUsers:
 
 def test_charge_rejects_zero_and_negative_amounts(monkeypatch):
     monkeypatch.setattr(db, "users", NoWriteUsers())
-    for amount in (0, -1, -0.01):
+    for amount in (0, -1, -0.01, float('nan'), float('inf'), -float('inf')):
         assert run(db.charge(7, amount)) is False
 
 
