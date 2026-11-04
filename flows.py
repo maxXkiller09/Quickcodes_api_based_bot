@@ -75,7 +75,7 @@ async def s2_rows(force=False):
         _s2.update(t=now, rows=d.get("countries") or [])
         return _s2["rows"]
     await explain("s2", st, d)
-    if _s2["rows"] is not None and now - _s2["t"] < 300:
+    if not force and _s2["rows"] is not None and now - _s2["t"] < 300:
         return _s2["rows"]
     return None
 
@@ -200,7 +200,7 @@ async def s3_countries(sid, full=False, force=False, include_empty=False):
         st, d = await qc("s3", "GET", "/v1/s3/countries", params={"service": sid, "full": int(bool(full))}, timeout=15)
         if not d.get("ok"):
             await explain("s3", st, d)
-            if c:
+            if c and not force:
                 rows = c["rows"]
             else:
                 return None
