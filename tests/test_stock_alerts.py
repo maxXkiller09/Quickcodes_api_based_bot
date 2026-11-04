@@ -1,10 +1,20 @@
 """Unit tests for back-in-stock transition detection."""
 import unittest
 
-from stock_alerts import is_restock_transition
+from stock_alerts import is_restock_transition, poll_delay
 
 
 class RestockTransitionTests(unittest.TestCase):
+    def test_poll_runs_every_five_minutes_start_to_start(self):
+        self.assertEqual(poll_delay(300, 0), 300)
+        self.assertEqual(poll_delay(300, 90), 210)
+
+    def test_slow_poll_does_not_add_another_five_minute_wait(self):
+        self.assertEqual(poll_delay(300, 360), 0)
+
+    def test_poll_interval_never_falls_below_five_minutes(self):
+        self.assertEqual(poll_delay(60, 10), 290)
+
     def test_first_snapshot_does_not_trigger(self):
         self.assertFalse(is_restock_transition(None, 5))
 
