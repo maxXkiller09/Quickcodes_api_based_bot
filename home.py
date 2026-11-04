@@ -162,7 +162,7 @@ async def profile(cq: CallbackQuery):
     u = await users.find_one({"_id": cq.from_user.id}, {"balance": 1}) or {}
     uname = f"@{esc(cq.from_user.username)}" if cq.from_user.username else "Not set"
     text = (
-        f"👤 <b>MY PROFILE</b>\n{SEP}\n"
+        f"💜 <b>MY PROFILE</b>  <code>ACCOUNT</code>\n{SEP}\n"
         f"<blockquote>🧑 <b>Name</b>\n{esc(cq.from_user.full_name or 'User')}</blockquote>\n"
         f"<blockquote>🔗 <b>Username</b>\n{uname}</blockquote>\n"
         f"<blockquote>🆔 <b>User ID</b>\n<code>{cq.from_user.id}</code></blockquote>\n"
@@ -179,7 +179,7 @@ async def profile(cq: CallbackQuery):
 async def history(cq: CallbackQuery):
     rows = await orders.find({"user_id": cq.from_user.id}).sort("date", -1).limit(15).to_list(15)
     if not rows:
-        await edit(cq, f"📜 <b>ORDER HISTORY</b>\n{SEP}\n\nYou haven't placed an order yet.\n\n<i>Browse services to place your first order.</i>",
+        await edit(cq, f"💜 <b>ORDER HISTORY</b>  <code>RECENT ORDERS</code>\n{SEP}\n\nYou haven't placed an order yet.\n\n<i>Browse services to place your first order.</i>",
                    KB([B("🛍 Browse Services", "back_main")], [B("👤 My Profile", "stats")]))
         return await cq.answer()
     icon = {"tg": "✈️", "wa": "💬", "otp": "📲", "smm": "🌍"}
@@ -189,6 +189,6 @@ async def history(cq: CallbackQuery):
         extra = f" · <code>{esc(o['number'])}</code>" if o.get("number") else ""
         lines.append(f"{icon.get(o.get('type'), '🧾')} <b>{esc(o.get('title', 'Order'))}</b>{extra}\n"
                      f"     {fmt_curr(o.get('price', 0))} · {d.strftime('%d %b %H:%M') if d else ''}")
-    await edit(cq, f"📜 <b>ORDER HISTORY</b>\n{SEP}\n<i>Latest {len(rows)} orders</i>\n\n" + "\n\n".join(lines),
+    await edit(cq, f"💜 <b>ORDER HISTORY</b>  <code>RECENT ORDERS</code>\n{SEP}\n<i>Latest {len(rows)} orders</i>\n\n" + "\n\n".join(lines),
                KB([B("👤 My Profile", "stats")], [B("🏠 Main Menu", "back_main")]))
     await cq.answer()
