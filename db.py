@@ -122,7 +122,7 @@ async def charge(uid, amount):
 
 async def refund(uid, amount):
     amount = round(float(amount), 2)
-    if amount <= 0:
+    if not math.isfinite(amount) or amount <= 0:
         return False
     try:
         result = await users.update_one({"_id": uid}, {"$inc": {"balance": amount}})
