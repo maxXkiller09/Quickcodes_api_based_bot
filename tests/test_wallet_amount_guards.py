@@ -61,3 +61,17 @@ def test_idempotent_wallet_writes_reject_malformed_amounts(monkeypatch):
     for amount in (None, "not-a-number", "Infinity"):
         assert run(db.refund_once(7, amount, "bad-refund")) == "failed"
         assert run(db.credit_once(7, amount, "bad-credit")) == "failed"
+
+
+
+def test_get_balance_handles_malformed_stored_values(monkeypatch):
+    class StoredBalance:
+        def __init__(self, value):
+            self.value = value
+
+        async def find_one(self, *args, **kwargs):
+            return {"balance": self.value}
+
+    for value in (None, "bad", float("nan"), float("inf"), -float("inf")):
+        monkeypatch.setattr(db, "users", StoredBalance(value))
+        assert run(db.get_balance(7)) == 0.0
