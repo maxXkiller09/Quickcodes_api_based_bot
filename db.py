@@ -112,17 +112,25 @@ async def get_balance(uid):
     return round(float(u.get("balance", 0.0)), 2)
 
 
+def _wallet_amount(value):
+    try:
+        amount = round(float(value), 2)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return amount if math.isfinite(amount) and amount > 0 else None
+
+
 async def charge(uid, amount):
-    amount = round(float(amount), 2)
-    if not math.isfinite(amount) or amount <= 0:
+    amount = _wallet_amount(amount)
+    if amount is None:
         return False
     r = await users.update_one({"_id": uid, "balance": {"$gte": amount}}, {"$inc": {"balance": -amount}})
     return r.modified_count == 1
 
 
 async def refund(uid, amount):
-    amount = round(float(amount), 2)
-    if not math.isfinite(amount) or amount <= 0:
+    amount = _wallet_amount(amount)
+    if amount is None:
         return False
     try:
         result = await users.update_one({"_id": uid}, {"$inc": {"balance": amount}})
@@ -139,8 +147,8 @@ async def refund_once(uid, amount, refund_id):
     Returns 'applied', 'already_applied', or 'failed'. The key is persisted with the
     balance increment, so a retry after a crash cannot credit the wallet twice.
     """
-    amount = round(float(amount), 2)
-    if not math.isfinite(amount) or amount <= 0 or not refund_id:
+    amount = _wallet_amount(amount)
+    if amount is None or not refund_id:
         return "failed"
     try:
         result = await users.update_one(
@@ -177,8 +185,8 @@ async def credit_once(uid, amount, credit_id):
     case from a write that did not happen.
     Returns 'applied', 'already_applied', or 'failed'.
     """
-    amount = round(float(amount), 2)
-    if not math.isfinite(amount) or amount <= 0 or not credit_id:
+    amount = _wallet_amount(amount)
+    if amount is None or not credit_id:
         return "failed"
 
     key = str(credit_id)
