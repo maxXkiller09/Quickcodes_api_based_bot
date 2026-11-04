@@ -26,6 +26,7 @@ from aiogram.types import Message, CallbackQuery
 from config import BOT_TITLE, SUPPORT_LINK, ADMIN_IDS
 from db import users, orders
 import stock_alerts
+from flows import s3_catalog
 from utils import B, KB, esc, fmt_curr, edit, SEP, normalize_support
 
 router = Router()
@@ -89,7 +90,7 @@ async def stop_personal_stock_notifications(cq: CallbackQuery):
     if service_key == "s2":
         service_name = "Telegram Accounts"
     else:
-        catalog = await __import__("flows").s3_catalog() or {}
+        catalog = await s3_catalog() or {}
         service_name = str((catalog.get(service_key) or {}).get("name") or service_key)
     name = " ".join(service_name.lower().replace("-", " ").split())
     await stock_alerts.notification_preferences.update_one(
@@ -97,7 +98,7 @@ async def stop_personal_stock_notifications(cq: CallbackQuery):
         {"$addToSet": {"disabled_services": name}},
         upsert=True,
     )
-    await cq.answer(f"🔕 {service_name} restock alerts stopped for you.", show_alert=True)
+    await cq.answer(f"🔕 {esc(service_name)} restock alerts stopped for you.", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("stock:mute:"))
@@ -111,7 +112,7 @@ async def mute_stock_notifications(cq: CallbackQuery):
         catalog = await __import__("flows").s3_catalog() or {}
         service_name = str((catalog.get(service_key) or {}).get("name") or service_key)
     await stock_alerts.set_service_notifications("global", service_name, False)
-    await cq.answer(f"🔕 Notifications off: {service_name}", show_alert=True)
+    await cq.answer(f"🔕 Notifications off: {esc(service_name)}", show_alert=True)
 
 
 
