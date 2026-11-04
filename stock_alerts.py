@@ -240,6 +240,13 @@ def format_inr(value) -> str:
     return f"{whole}.{fraction}"
 
 
+WHATSAPP_CHECK_INTERVAL = 3600
+
+
+def is_whatsapp_service(service_name: str) -> bool:
+    return " ".join(str(service_name or "").lower().replace("-", " ").split()) == "whatsapp"
+
+
 def poll_delay(interval: int, elapsed: float) -> float:
     """Seconds to wait so stock-poll cycles start at least interval seconds apart (10m minimum)."""
     return max(0.0, max(600, int(interval)) - max(0.0, float(elapsed)))
@@ -268,6 +275,7 @@ async def monitor_loop(interval: int = 600):
     await init_stock_alerts()
     logging.info("Restock monitor started; interval=%ss; notifications default ON", max(600, int(interval)))
     loop = asyncio.get_running_loop()
+    last_whatsapp_check = None
     while True:
         cycle_started = loop.time()
         try:
@@ -307,7 +315,8 @@ async def monitor_loop(interval: int = 600):
                     text = (
                         "🔔 <b>Back in Stock!</b>\n"
                         "━━━━━━━━━━━━━━━━━━━━\n"
-                        f"<blockquote>🌍 <b>Country:</b> {flag_for(name_raw)} {name}\n"
+                        f"<blockquote>📦 <b>Service:</b> Telegram Account\n"
+                        f"🌍 <b>Country:</b> {flag_for(name_raw)} {name}\n"
                         f"📊 <b>Stock:</b> {format_stock_count(stock)} accounts\n"
                         f"🏷️ <b>Price:</b> ₹{format_inr(row.get('my_price'))}</blockquote>\n"
                         "<i>Grab it before it runs out!</i>"
@@ -331,11 +340,20 @@ async def monitor_loop(interval: int = 600):
                             {"$set": {"stock": 0}},
                         )
 
-            # Server 3: check each catalog service, so WhatsApp and every Apps OTP service are covered.
+            # WhatsApp stock alerts run hourly; other Server 3 catalog entries are not notified.
             catalog = await s3_catalog() or {}
+            now_mono = loop.time()
+            whatsapp_due = (
+                last_whatsapp_check is None
+                or now_mono - last_whatsapp_check >= WHATSAPP_CHECK_INTERVAL
+            )
             for sid, service in catalog.items():
                 service_name = str(service.get("name") or f"Service {sid}")
+                if not is_whatsapp_service(service_name) or not whatsapp_due:
+                    continue
                 countries = await s3_countries(str(sid), full=True, force=True, include_empty=True)
+                if countries is not None:
+                    last_whatsapp_check = loop.time()
                 if countries is None:
                     continue
                 # Fetch this service's previous snapshot once, not once per country.
@@ -371,7 +389,8 @@ async def monitor_loop(interval: int = 600):
                     text = (
                         "🔔 <b>Back in Stock!</b>\n"
                         "━━━━━━━━━━━━━━━━━━━━\n"
-                        f"<blockquote>📱 <b>Service:</b> {escape(service_name)}\n"
+                        f"<blockquote>📦 <b>Service Type:</b> WhatsApp\n"
+                        f"📱 <b>Service:</b> {escape(service_name)}\n"
                         f"🌍 <b>Country:</b> {flag_for(name_raw)} {escape(name_raw)}\n"
                         f"📊 <b>Stock:</b> {format_stock_count(stock)} numbers\n"
                         f"🏷️ <b>Price:</b> ₹{format_inr(row.get('my_price'))}</blockquote>\n"
